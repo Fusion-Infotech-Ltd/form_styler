@@ -192,11 +192,29 @@ def _rule_row(doc):
     return row
 
 
+def _normalize_rule_data(rule_data):
+    """Map UI selection to legacy apply_to + fieldname for storage."""
+    fn = (rule_data.get("fieldname") or "").strip()
+    if fn in ("__all__", "*"):
+        rule_data["apply_to"] = "All Fields in DocType"
+        rule_data["fieldname"] = "__all__"
+    elif "," in fn:
+        rule_data["apply_to"] = "Multiple Fields in DocType"
+    elif fn:
+        rule_data["apply_to"] = "Specific Field"
+    else:
+        rule_data["apply_to"] = "Multiple Fields in DocType"
+        rule_data["fieldname"] = ""
+    return rule_data
+
+
 @frappe.whitelist()
 def save_style_rule(rule_data):
     """Upsert a Field Style Rule from the Page UI."""
     if isinstance(rule_data, str):
         rule_data = json.loads(rule_data)
+
+    rule_data = _normalize_rule_data(rule_data)
 
     name = rule_data.get("name")
     if name and frappe.db.exists("Field Style Rule", name):

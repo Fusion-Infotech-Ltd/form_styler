@@ -65,30 +65,38 @@
 		return list;
 	}
 
-	function ruleMatchesField(rule, frm, field) {
+	function parseSelectedNames(rule) {
+		const raw = (rule.fieldname || "").trim();
+		if (raw === "__all__" || raw === "*") {
+			return { all: true, names: [] };
+		}
+		return {
+			all: false,
+			names: raw
+				.split(",")
+				.map((s) => s.trim())
+				.filter(Boolean),
+		};
+	}
+
+	function ruleMatchesSelected(rule, frm, elementFieldname) {
 		rule = normalizeRule(rule);
-		if (!rule || !isRuleActive(rule) || !field || !field.df) return false;
+		if (!rule || !isRuleActive(rule) || !elementFieldname) return false;
+		if (rule.doctype_name && frm.doctype !== rule.doctype_name) return false;
+		const sel = parseSelectedNames(rule);
+		if (sel.all) return true;
+		if (!sel.names.length) return false;
+		return sel.names.includes(elementFieldname);
+	}
+
+	function ruleMatchesField(rule, frm, field) {
+		if (!field || !field.df) return false;
 		if ((rule.target_element || "Field") !== "Field") return false;
-
-		const df = field.df;
-		const applyTo = rule.apply_to;
-
-		if (applyTo === "By Field Type" && rule.field_type) {
-			return df.fieldtype === rule.field_type;
+		// Legacy: By Field Type (global, no doctype list)
+		if (rule.apply_to === "By Field Type" && rule.field_type) {
+			return field.df.fieldtype === rule.field_type;
 		}
-		if (applyTo === "Specific Field" && rule.fieldname) {
-			if (rule.doctype_name && frm.doctype !== rule.doctype_name) return false;
-			return df.fieldname === rule.fieldname;
-		}
-		if (applyTo === "Multiple Fields in DocType" && rule.fieldname) {
-			if (rule.doctype_name && frm.doctype !== rule.doctype_name) return false;
-			const names = rule.fieldname.split(",").map((s) => s.trim());
-			return names.includes(df.fieldname);
-		}
-		if (applyTo === "All Fields in DocType" && rule.doctype_name) {
-			return frm.doctype === rule.doctype_name;
-		}
-		return false;
+		return ruleMatchesSelected(rule, frm, field.df.fieldname);
 	}
 
 	function sortedRules(rules) {
@@ -216,30 +224,11 @@
 	}
 
 	function ruleMatchesLayout(rule, frm, layoutType, breakFieldname) {
-		rule = normalizeRule(rule);
-		if (!rule || !isRuleActive(rule) || !breakFieldname) return false;
+		if (!breakFieldname) return false;
 		const target = rule.target_element || "Field";
 		if (layoutType === "section" && target !== "Section") return false;
 		if (layoutType === "column" && target !== "Column") return false;
-		if (rule.doctype_name && frm.doctype !== rule.doctype_name) return false;
-
-		const applyTo = rule.apply_to;
-		if (applyTo === "By Field Type") {
-			if (layoutType === "section" && rule.field_type === "Section Break") return true;
-			if (layoutType === "column" && rule.field_type === "Column Break") return true;
-			return false;
-		}
-		if (applyTo === "All Fields in DocType") return true;
-		if (applyTo === "Specific Field" && rule.fieldname) {
-			return rule.fieldname === breakFieldname;
-		}
-		if (applyTo === "Multiple Fields in DocType" && rule.fieldname) {
-			return rule.fieldname
-				.split(",")
-				.map((s) => s.trim())
-				.includes(breakFieldname);
-		}
-		return false;
+		return ruleMatchesSelected(rule, frm, breakFieldname);
 	}
 
 	function mergeLayoutStyles(rules, frm, layoutType, breakFieldname) {
@@ -253,18 +242,27 @@
 				if (rule.column_width) out.width = rule.column_width;
 				if (rule.column_height) out.height = rule.column_height;
 			}
+			if (rule.label_color) out.labelColor = rule.label_color;
+			if (rule.field_bg_color) out.bgColor = rule.field_bg_color;
+			if (rule.hover_effect) {
+				out.hoverEffect = rule.hover_effect;
+				out.hoverBgColor = rule.hover_bg_color;
+			}
 		}
 		return out;
 	}
 
 	function clearLayoutStyles($el) {
-		$el.removeClass("fs-styled-layout").css({
-			width: "",
-			maxWidth: "",
-			minWidth: "",
-			minHeight: "",
-			flex: "",
-		});
+		$el.removeClass("fs-styled-layout")
+			.removeAttr("data-fs-hover data-fs-hover-bg")
+			.css({
+				width: "",
+				maxWidth: "",
+				minWidth: "",
+				minHeight: "",
+				flex: "",
+				backgroundColor: "",
+			});
 	}
 
 	function applyStylesToLayoutElement($el, styles) {
@@ -280,6 +278,15 @@
 		}
 		if (styles.height) {
 			$el.css({ minHeight: styles.height });
+		}
+		if (styles.bgColor) {
+			$el.css("background-color", styles.bgColor);
+		}
+		if (styles.hoverEffect) {
+			$el.attr("data-fs-hover", styles.hoverEffect);
+			if (styles.hoverBgColor) {
+				$el.attr("data-fs-hover-bg", styles.hoverBgColor);
+			}
 		}
 	}
 
@@ -339,40 +346,11 @@
 	}
 
 	function buildLayoutCSS(rules) {
-		let css = "";
-		for (const rule of sortedRules(rules)) {
-			const target = rule.target_element || "Field";
-			if (target === "Column" && (rule.column_width || rule.column_height)) {
-				const scope = rule.doctype_name
-					? `.fs-doctype-${slugify(rule.doctype_name)} `
-					: "";
-				css += `${scope}.form-column {`;
-				if (rule.column_width) {
-					css += `width:${rule.column_width}!important;flex:0 0 ${rule.column_width}!important;`;
-				}
-				if (rule.column_height) {
-					css += `min-height:${rule.column_height}!important;`;
-				}
-				css += "}\n";
-			}
-			if (target === "Section" && (rule.section_width || rule.section_height)) {
-				const scope = rule.doctype_name
-					? `.fs-doctype-${slugify(rule.doctype_name)} `
-					: "";
-				css += `${scope}.form-section {`;
-				if (rule.section_width) css += `width:${rule.section_width}!important;`;
-				if (rule.section_height) css += `min-height:${rule.section_height}!important;`;
-				css += "}\n";
-			}
-		}
-		// Hover on directly styled fields
-		css += `
+		// Per-element sizing is inline only — no global .form-section / .form-column rules.
+		let css = `
 .fs-styled[data-fs-hover="Highlight"] .form-control:hover,
 .fs-styled[data-fs-hover="Highlight"] .like-disabled-input:hover {
   transition: background 0.2s ease;
-}
-.fs-styled[data-fs-hover="Highlight"] .form-control:hover,
-.fs-styled[data-fs-hover="Highlight"] .like-disabled-input:hover {
   background-color: #e8f4ff !important;
 }
 .fs-styled[data-fs-hover="Lift"] .form-control:hover,
@@ -385,7 +363,31 @@
   border-color: var(--primary) !important;
   box-shadow: 0 0 0 3px rgba(100,130,255,0.22) !important;
 }
+.fs-styled-layout[data-fs-hover="Highlight"]:hover {
+  transition: background 0.2s ease;
+  background-color: #e8f4ff !important;
+}
+.fs-styled-layout[data-fs-hover="Lift"]:hover {
+  box-shadow: 0 4px 14px rgba(0,0,0,0.13) !important;
+  transform: translateY(-1px);
+}
+.fs-styled-layout[data-fs-hover="Glow"]:hover {
+  outline: 2px solid var(--primary);
+  box-shadow: 0 0 0 4px rgba(100,130,255,0.2) !important;
+}
 `;
+		// Custom highlight bg per rule via inline on element — optional attribute
+		for (const rule of sortedRules(rules)) {
+			if (rule.hover_effect !== "Highlight" || !rule.hover_bg_color) continue;
+			const sel = parseSelectedNames(rule);
+			const names = sel.all ? [] : sel.names;
+			names.forEach(function (fn) {
+				const esc = escapeCSSAttr(fn);
+				css += `.fs-styled[data-fieldname="${esc}"][data-fs-hover="Highlight"] .form-control:hover,`;
+				css += `.fs-styled-layout[data-fieldname="${esc}"][data-fs-hover="Highlight"]:hover {`;
+				css += `background-color:${rule.hover_bg_color}!important;}\n`;
+			});
+		}
 		return css;
 	}
 

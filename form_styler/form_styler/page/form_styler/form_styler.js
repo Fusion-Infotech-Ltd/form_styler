@@ -113,6 +113,7 @@ const FormStylerApp = {
 	async init(wrapper, page) {
 		this.wrapper = wrapper;
 		this.page = page;
+		this._scopeControls = { doctype: null, target: null };
 		this._buildLayout();
 		await this.loadRules();
 	},
@@ -242,7 +243,7 @@ const FormStylerApp = {
 			rule_name: "",
 			is_active: 1,
 			priority: 10,
-			apply_to: "All Fields in DocType",
+			apply_to: "Multiple Fields in DocType",
 			target_element: "Field",
 			doctype_name: "",
 			fieldname: "",
@@ -290,19 +291,6 @@ const FormStylerApp = {
       <div class="fs-section-title">1 · Scope</div>
       <div class="fs-grid-2">
         <div class="fs-field-group">
-          <label>Apply To</label>
-          <select class="form-control form-control-sm" data-field="apply_to">
-            ${[
-				"By Field Type",
-				"Specific Field",
-				"Multiple Fields in DocType",
-				"All Fields in DocType",
-			]
-				.map((o) => `<option ${r.apply_to === o ? "selected" : ""}>${o}</option>`)
-				.join("")}
-          </select>
-        </div>
-        <div class="fs-field-group">
           <label>Target Element</label>
           <select class="form-control form-control-sm" data-field="target_element">
             ${["Field", "Column", "Section"]
@@ -311,8 +299,6 @@ const FormStylerApp = {
           </select>
         </div>
       </div>
-
-      <!-- Conditional criteria rows -->
       <div id="fs-criteria-area"></div>
     </div>
 
@@ -439,10 +425,8 @@ const FormStylerApp = {
 					}
 				}
 				// Cascade updates
-				if (field === "apply_to" || field === "target_element") {
-					if (field === "target_element") {
-						Object.keys(self.doctypeFields).forEach((k) => delete self.doctypeFields[k]);
-					}
+				if (field === "target_element") {
+					Object.keys(self.doctypeFields).forEach((k) => delete self.doctypeFields[k]);
 					self._updateCriteria();
 					self._updateDimensions();
 				}
@@ -511,135 +495,152 @@ const FormStylerApp = {
 		return fields;
 	},
 
-	_syncPickerToRule(checkedNames, allChecked) {
+	_destroyScopeControls() {
+		["doctype", "target"].forEach((key) => {
+			const ctrl = this._scopeControls && this._scopeControls[key];
+			if (ctrl && ctrl.$wrapper) {
+				ctrl.$wrapper.remove();
+			}
+		});
+		this._scopeControls = { doctype: null, target: null };
+	},
+
+	_targetLabel() {
+		const t = this.currentRule.target_element || "Field";
+		if (t === "Section") return __("Section(s)");
+		if (t === "Column") return __("Column(s)");
+		return __("Field(s)");
+	},
+
+	_syncSelectionFromTargetControl() {
 		const r = this.currentRule;
-		if (allChecked) {
+		const ctrl = this._scopeControls && this._scopeControls.target;
+		if (!ctrl) return;
+
+		let vals = ctrl.get_value();
+		if (typeof vals === "string") {
+			vals = vals ? [vals] : [];
+		}
+		vals = vals || [];
+
+		if (vals.includes("__all__")) {
+			r.fieldname = "__all__";
 			r.apply_to = "All Fields in DocType";
-			r.fieldname = "";
-		} else if (checkedNames.length === 1) {
+		} else if (vals.length === 1) {
+			r.fieldname = vals[0];
 			r.apply_to = "Specific Field";
-			r.fieldname = checkedNames[0];
-		} else if (checkedNames.length > 1) {
+		} else if (vals.length > 1) {
+			r.fieldname = vals.join(", ");
 			r.apply_to = "Multiple Fields in DocType";
-			r.fieldname = checkedNames.join(", ");
 		} else {
 			r.fieldname = "";
+			r.apply_to = "Multiple Fields in DocType";
 		}
 	},
 
-	async _renderFieldPicker(area) {
+	_setTargetLoading(show) {
+		const el = document.getElementById("fs-target-loading");
+		if (el) el.classList.toggle("hide", !show);
+	},
+
+	async _getTargetOptions(txt) {
+		const r = this.currentRule;
+		const dt = r.doctype_name;
+		if (!dt) return [];
+
+		this._setTargetLoading(true);
+		try {
+			const fields = await this._loadDoctypeFields(dt, r.target_element || "Field");
+			const term = (txt || "").toLowerCase();
+			const filtered = fields.filter((f) => {
+				if (!term) return true;
+				return (
+					f.fieldname.toLowerCase().includes(term) ||
+					(f.label || "").toLowerCase().includes(term) ||
+					f.fieldtype.toLowerCase().includes(term)
+				);
+			});
+			const options = filtered.map((f) => ({
+				value: f.fieldname,
+				label: f.label || f.fieldname,
+				description: f.fieldtype,
+			}));
+			options.unshift({
+				value: "__all__",
+				label: __("All in this DocType"),
+				description: __("Style every matching element"),
+			});
+			return options;
+		} finally {
+			this._setTargetLoading(false);
+		}
+	},
+
+	_setupScopeControls(area) {
 		const self = this;
 		const r = this.currentRule;
-		const picker = area.querySelector("#fs-field-picker");
-		if (!picker) return;
+		this._destroyScopeControls();
+		this._scopeControls = { doctype: null, target: null };
 
-		const dt = r.doctype_name;
-		const target = r.target_element || "Field";
-		if (!dt) {
-			picker.innerHTML = `<div class="fs-field-picker-empty">Select a DocType to list fields</div>`;
-			return;
+		const dtMount = area.querySelector("#fs-doctype-mount");
+		const tgtMount = area.querySelector("#fs-target-mount");
+		if (!dtMount || !tgtMount) return;
+
+		this._doctypeCtrl = frappe.ui.form.make_control({
+			parent: dtMount,
+			df: {
+				label: __("DocType"),
+				fieldtype: "Link",
+				options: "DocType",
+				fieldname: "doctype_name",
+				reqd: 1,
+			},
+			render_input: true,
+		});
+		this._scopeControls.doctype = this._doctypeCtrl;
+		if (r.doctype_name) {
+			this._doctypeCtrl.set_value(r.doctype_name);
 		}
 
-		picker.innerHTML = `<div class="fs-field-picker-empty">Loading fields…</div>`;
-		const fields = await this._loadDoctypeFields(dt, target);
-		if (!fields.length) {
-			picker.innerHTML = `<div class="fs-field-picker-empty">No fields for this target</div>`;
-			return;
+		this._targetCtrl = frappe.ui.form.make_control({
+			parent: tgtMount,
+			df: {
+				label: this._targetLabel(),
+				fieldtype: "MultiSelectList",
+				fieldname: "fieldname",
+				reqd: 1,
+				get_data(txt) {
+					return self._getTargetOptions(txt);
+				},
+			},
+			render_input: true,
+		});
+		this._scopeControls.target = this._targetCtrl;
+
+		const initial =
+			r.fieldname === "__all__" || r.apply_to === "All Fields in DocType"
+				? ["__all__"]
+				: (r.fieldname || "")
+						.split(",")
+						.map((s) => s.trim())
+						.filter(Boolean);
+		if (initial.length) {
+			this._targetCtrl.set_value(initial);
 		}
 
-		const selected = new Set(
-			(r.fieldname || "").split(",").map((s) => s.trim()).filter(Boolean),
-		);
-		const allMode = r.apply_to === "All Fields in DocType";
-
-		const layout = fields.filter((f) => f.is_layout);
-		const inputs = fields.filter((f) => !f.is_layout);
-
-		const renderGroup = (title, list) => {
-			if (!list.length) return "";
-			return `
-<div class="fs-field-picker-group">
-  <div class="fs-field-picker-group-title">${title}</div>
-  ${list
-		.map(
-			(f) => `
-  <label class="fs-field-picker-item">
-    <input type="checkbox" class="fs-field-chk" value="${f.fieldname}"
-      ${allMode || selected.has(f.fieldname) ? "checked" : ""} ${allMode ? "disabled" : ""} />
-    <span>${frappe.utils.escape_html(f.label || f.fieldname)}</span>
-    <span style="color:var(--text-muted);font-size:10px">(${f.fieldtype})</span>
-  </label>`,
-		)
-		.join("")}
-</div>`;
-		};
-
-		picker.innerHTML = `
-<div class="fs-field-picker-head">
-  <label><input type="checkbox" class="fs-all-fields" ${allMode ? "checked" : ""} /> All in DocType</label>
-  <span style="font-size:11px;color:var(--text-muted)">${fields.length} items</span>
-</div>
-${renderGroup("Section / column breaks", layout)}
-${renderGroup("Fields", inputs)}`;
-
-		const allCb = picker.querySelector(".fs-all-fields");
-		allCb.addEventListener("change", (e) => {
-			if (e.target.checked) {
-				r.apply_to = "All Fields in DocType";
+		this._doctypeCtrl.$input.on("change", () => {
+			r.doctype_name = self._doctypeCtrl.get_value() || "";
+			Object.keys(self.doctypeFields).forEach((k) => delete self.doctypeFields[k]);
+			if (self._targetCtrl) {
+				self._targetCtrl.set_value([]);
 				r.fieldname = "";
-				self._renderFieldPicker(area);
-			} else {
-				r.apply_to = "Multiple Fields in DocType";
-				self._syncPickerToRule([], false);
-				self._renderFieldPicker(area);
 			}
 			self._updateCSSPreview();
 		});
 
-		picker.querySelectorAll(".fs-field-chk").forEach((chk) => {
-			chk.addEventListener("change", () => {
-				const names = [...picker.querySelectorAll(".fs-field-chk:checked")].map(
-					(c) => c.value,
-				);
-				self._syncPickerToRule(names, false);
-				self._updateCSSPreview();
-			});
-		});
-	},
-
-	_bindDoctypeInput(area) {
-		const self = this;
-		const doctypeInput = area.querySelector(".fs-doctype-input");
-		if (!doctypeInput) return;
-
-		const onDtChange = async () => {
-			self.currentRule.doctype_name = doctypeInput.value.trim();
-			delete self.doctypeFields[`${self.currentRule.doctype_name}::Field`];
-			await self._renderFieldPicker(area);
+		this._targetCtrl.$input.on("change", () => {
+			self._syncSelectionFromTargetControl();
 			self._updateCSSPreview();
-		};
-
-		doctypeInput.addEventListener("change", onDtChange);
-		doctypeInput.addEventListener("blur", onDtChange);
-
-		$(doctypeInput).autocomplete({
-			source: function (req, resp) {
-				frappe
-					.call({
-						method: "frappe.client.get_list",
-						args: {
-							doctype: "DocType",
-							filters: [["name", "like", `%${req.term}%`]],
-							fields: ["name"],
-							limit: 15,
-						},
-					})
-					.then((res) => resp((res.message || []).map((d) => d.name)));
-			},
-			select: function (_event, ui) {
-				doctypeInput.value = ui.item.value;
-				onDtChange();
-			},
 		});
 	},
 
@@ -647,49 +648,29 @@ ${renderGroup("Fields", inputs)}`;
 		const r = this.currentRule;
 		const area = document.getElementById("fs-criteria-area");
 		if (!area) return;
+
 		const target = r.target_element || "Field";
+		const hint =
+			target === "Section"
+				? __("Pick section break name(s) from Customize Form")
+				: target === "Column"
+					? __("Pick column break name(s) from Customize Form")
+					: __("Pick input field name(s)");
 
-		if (r.apply_to === "By Field Type") {
-			area.innerHTML = `
-<div class="fs-grid-2" style="margin-top:12px">
-  <div class="fs-field-group">
-    <label>Field Type <small>(all forms)</small></label>
-    <select class="form-control form-control-sm" data-field="field_type">
-      ${FIELD_TYPES.map((t) => `<option ${r.field_type === t ? "selected" : ""}>${t}</option>`).join("")}
-    </select>
-  </div>
-  <div class="fs-field-group">
-    <label>Also match layout breaks</label>
-    <select class="form-control form-control-sm" data-field="field_type" disabled style="display:none"></select>
-    <p class="text-muted small" style="margin:6px 0 0">Use <b>Section Break</b> or <b>Column Break</b> as Field Type when Target is Section/Column.</p>
+		area.innerHTML = `
+<div class="fs-scope-controls" style="margin-top:12px">
+  <div id="fs-doctype-mount"></div>
+  <div class="fs-field-group" style="margin-top:10px">
+    <div id="fs-target-mount"></div>
+    <div id="fs-target-loading" class="fs-target-loading hide">
+      <span class="spinner-border spinner-border-sm" role="status"></span>
+      ${__("Loading fields…")}
+    </div>
+    <p class="text-muted small" style="margin:8px 0 0">${hint}</p>
   </div>
 </div>`;
-		} else {
-			area.innerHTML = `
-<div style="margin-top:12px">
-  <div class="fs-field-group">
-    <label>DocType</label>
-    <input class="form-control form-control-sm fs-doctype-input" data-field="doctype_name"
-           placeholder="e.g. Asset, Sales Invoice" value="${frappe.utils.escape_html(r.doctype_name || "")}" />
-  </div>
-  <p class="text-muted small" style="margin:8px 0 4px">
-    Select field(s) below — includes <b>Section Break</b> and <b>Column Break</b> names from Customize Form.
-  </p>
-  <div id="fs-field-picker" class="fs-field-picker"></div>
-</div>`;
-			this._bindDoctypeInput(area);
-			this._renderFieldPicker(area);
-		}
 
-		const self = this;
-		area.querySelectorAll("[data-field]").forEach((el) => {
-			if (el.classList.contains("fs-doctype-input")) return;
-			const field = el.dataset.field;
-			el.addEventListener("change", (e) => {
-				self.currentRule[field] = e.target.value;
-				self._updateCSSPreview();
-			});
-		});
+		this._setupScopeControls(area);
 	},
 
 	_bindResizePanel(host) {
@@ -826,6 +807,21 @@ ${renderGroup("Fields", inputs)}`;
 		const r = this.currentRule;
 		if (!r.rule_name || !r.rule_name.trim()) {
 			frappe.msgprint("Please enter a Rule Name.");
+			return;
+		}
+
+		if (this._scopeControls?.doctype) {
+			r.doctype_name = this._scopeControls.doctype.get_value() || "";
+		}
+		if (this._scopeControls?.target) {
+			this._syncSelectionFromTargetControl();
+		}
+		if (!r.doctype_name) {
+			frappe.msgprint(__("Please select a DocType."));
+			return;
+		}
+		if (!r.fieldname) {
+			frappe.msgprint(__("Please select at least one {0}", [this._targetLabel()]));
 			return;
 		}
 
