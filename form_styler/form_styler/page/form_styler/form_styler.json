@@ -1,0 +1,20 @@
+{
+ "creation": "2024-01-01 00:00:00.000000",
+ "doctype": "Page",
+ "fields": [],
+ "icon": "octicon octicon-paintbrush",
+ "modified": "2024-01-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Form Styler",
+ "name": "form-styler",
+ "owner": "Administrator",
+ "page_name": "form-styler",
+ "restrict_to_domain": "",
+ "roles": [
+  {
+   "role": "System Manager"
+  }
+ ],
+ "system_page": 0,
+ "title": "Form Styler"
+}

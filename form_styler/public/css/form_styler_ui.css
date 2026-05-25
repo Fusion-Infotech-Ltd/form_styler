@@ -1,0 +1,398 @@
+/* ── Form Styler UI Styles ─────────────────────────────────────────────────── */
+
+/* Layout */
+.fs-layout {
+    display: flex;
+    height: calc(100vh - 120px);
+    min-height: 500px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    background: var(--card-bg);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+.fs-sidebar {
+    width: 280px;
+    min-width: 240px;
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    background: var(--subtle-fg);
+}
+
+.fs-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.fs-sidebar-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--heading-color);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.fs-search-wrap {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.fs-search {
+    font-size: 12px !important;
+}
+
+.fs-rule-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+}
+
+.fs-empty-state {
+    padding: 24px 16px;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-align: center;
+    line-height: 1.6;
+}
+
+.fs-rule-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: all 0.15s;
+    gap: 8px;
+}
+
+.fs-rule-item:hover {
+    background: var(--fg-color);
+}
+
+.fs-rule-item.active {
+    background: var(--fg-color);
+    border-left-color: var(--primary);
+}
+
+.fs-rule-item-left {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+}
+
+.fs-rule-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+}
+
+.fs-rule-dot.active   { background: var(--green-500, #22c55e); }
+.fs-rule-dot.inactive { background: var(--gray-400, #9ca3af); }
+
+.fs-rule-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+}
+
+.fs-rule-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+}
+
+.fs-rule-badges {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.fs-badge {
+    font-size: 10px;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.fs-badge.hover { background: #eef2ff; color: #4f46e5; }
+.fs-badge.dim   { background: #f0fdf4; color: #16a34a; }
+.fs-badge.color { background: #fff7ed; color: #ea580c; }
+
+/* ── Editor ──────────────────────────────────────────────────────────────── */
+.fs-editor {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--card-bg);
+}
+
+.fs-editor-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 10px;
+    color: var(--text-muted);
+}
+
+.fs-placeholder-icon { font-size: 48px; }
+.fs-placeholder-title { font-size: 20px; font-weight: 600; color: var(--heading-color); }
+.fs-placeholder-sub   { font-size: 14px; margin-bottom: 8px; }
+
+.fs-editor-inner {
+    padding: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Editor header */
+.fs-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--card-bg);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.fs-rule-name-input {
+    font-size: 18px;
+    font-weight: 600;
+    border: none;
+    background: transparent;
+    color: var(--heading-color);
+    outline: none;
+    width: 340px;
+    padding: 0;
+}
+
+.fs-rule-name-input::placeholder { color: var(--text-muted); font-weight: 400; }
+.fs-rule-name-input:focus { border-bottom: 2px solid var(--primary); }
+
+.fs-editor-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.fs-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-color);
+    cursor: pointer;
+    margin: 0;
+}
+
+/* Editor body */
+.fs-editor-body {
+    padding: 0 24px 32px;
+    flex: 1;
+}
+
+/* Sections */
+.fs-section {
+    margin-top: 28px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.fs-section:last-child { border-bottom: none; }
+
+.fs-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+}
+
+/* Grids */
+.fs-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.fs-grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+}
+
+@media (max-width: 900px) {
+    .fs-grid-2, .fs-grid-3 { grid-template-columns: 1fr; }
+}
+
+/* Field groups */
+.fs-field-group label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 5px;
+}
+
+/* Color picker */
+.fs-color-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.fs-color-picker {
+    width: 36px;
+    height: 32px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 2px;
+    cursor: pointer;
+    background: none;
+    flex-shrink: 0;
+}
+
+.fs-color-text { flex: 1; font-family: monospace; font-size: 12px !important; }
+
+.fs-clear-color {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+    line-height: 1;
+    border-radius: 3px;
+}
+
+.fs-clear-color:hover { background: var(--red-100, #fee2e2); color: var(--red-500, #ef4444); }
+
+/* ── Hover Effect Cards ─────────────────────────────────────────────────── */
+.fs-hover-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+}
+
+@media (max-width: 900px) {
+    .fs-hover-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.fs-hover-card {
+    border: 2px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    padding: 16px 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    background: var(--fg-color);
+}
+
+.fs-hover-card:hover {
+    border-color: var(--primary-light, #a5b4fc);
+    background: var(--card-bg);
+}
+
+.fs-hover-card.selected {
+    border-color: var(--primary);
+    background: var(--primary-light-bg, #eef2ff);
+    box-shadow: 0 0 0 3px rgba(100, 130, 255, 0.15);
+}
+
+.fs-hover-icon { font-size: 24px; margin-bottom: 6px; }
+
+.fs-hover-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--heading-color);
+    margin-bottom: 3px;
+}
+
+.fs-hover-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    line-height: 1.4;
+}
+
+/* Mini hover preview inside each card */
+.fs-hover-preview {
+    margin-top: 8px;
+}
+
+.fs-mock-input {
+    background: var(--input-bg, #fff);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 5px 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    transition: all 0.22s ease;
+    text-align: left;
+}
+
+/* Hover effect previews (live demo inside cards) */
+.fs-hover-preview-highlight:hover .fs-mock-input {
+    background: #e8f4ff !important;
+}
+
+.fs-hover-preview-lift:hover .fs-mock-input {
+    box-shadow: 0 4px 14px rgba(0,0,0,0.13) !important;
+    transform: translateY(-1px);
+}
+
+.fs-hover-preview-glow:hover .fs-mock-input {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px rgba(100,130,255,0.22) !important;
+}
+
+/* ── CSS Preview ──────────────────────────────────────────────────────────── */
+.fs-css-preview {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    padding: 16px;
+    border-radius: var(--border-radius-lg);
+    font-family: "Fira Code", "JetBrains Mono", "Courier New", monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 300px;
+    overflow-y: auto;
+    margin: 0;
+}
+
+/* ── New Rule button in sidebar header ───────────────────────────────────── */
+.fs-new-btn {
+    font-size: 11px !important;
+    padding: 3px 10px !important;
+    white-space: nowrap;
+}
+
+/* ── Page wrapper ────────────────────────────────────────────────────────── */
+.fs-page-wrapper {
+    padding: 0;
+}

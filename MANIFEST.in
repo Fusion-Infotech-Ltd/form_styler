@@ -1,0 +1,4 @@
+include requirements.txt
+recursive-include form_styler/templates *
+recursive-include form_styler/public *
+recursive-include form_styler/form_styler *
