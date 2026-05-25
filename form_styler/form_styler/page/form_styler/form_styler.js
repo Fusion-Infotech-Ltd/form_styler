@@ -8,7 +8,7 @@ frappe.pages["form-styler"].on_page_load = function (wrapper) {
 		single_column: true,
 	});
 
-	page.set_indicator("Beta", "orange");
+	// page.set_indicator("Beta", "orange");
 
 	// Toolbar buttons
 	page.add_menu_item("New Rule", () => FormStylerApp.openEditor(null));
@@ -426,6 +426,10 @@ const FormStylerApp = {
 				}
 				// Cascade updates
 				if (field === "target_element") {
+
+					r.fieldname = "";
+					r.apply_to = "Multiple Fields in DocType";
+				
 					Object.keys(self.doctypeFields).forEach((k) => delete self.doctypeFields[k]);
 					self._updateCriteria();
 					self._updateDimensions();

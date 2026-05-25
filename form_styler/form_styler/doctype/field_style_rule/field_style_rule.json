@@ -1,7 +1,7 @@
 {
  "actions": [],
  "autoname": "field:rule_name",
- "creation": "2024-01-01 00:00:00.000000",
+ "creation": "2024-01-01 00:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -10,8 +10,8 @@
   "is_active",
   "priority",
   "column_break_top",
-  "apply_to",
   "target_element",
+  "apply_to",
   "section_basic",
   "doctype_name",
   "fieldname",
@@ -19,12 +19,12 @@
   "section_dimensions",
   "field_width",
   "field_height",
-  "column_break_dim",
-  "column_width",
-  "column_height",
   "section_section_dims",
   "section_width",
   "section_height",
+  "column_dimensions_section",
+  "column_width",
+  "column_height",
   "section_colors",
   "label_color",
   "field_text_color",
@@ -53,28 +53,31 @@
   },
   {
    "default": "10",
+   "description": "If multiple rules target the same element, the rule with the higher priority will be applied.",
    "fieldname": "priority",
    "fieldtype": "Int",
-   "label": "Priority (lower = applied first)"
+   "label": "Priority",
+   "show_description_on_click": 1
   },
   {
    "fieldname": "column_break_top",
    "fieldtype": "Column Break"
   },
   {
+   "default": "Multiple Fields in DocType",
    "fieldname": "apply_to",
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Apply To",
    "options": "\nBy Field Type\nSpecific Field\nMultiple Fields in DocType\nAll Fields in DocType",
-   "reqd": 1
+   "read_only_depends_on": "eval:doc.target_element == 'Column' || doc.target_element=='Section'"
   },
   {
+   "default": "Field",
    "fieldname": "target_element",
    "fieldtype": "Select",
    "label": "Target Element",
-   "options": "\nField\nColumn\nSection",
-   "default": "Field"
+   "options": "\nField\nColumn\nSection"
   },
   {
    "fieldname": "section_basic",
@@ -82,80 +85,81 @@
    "label": "Selection Criteria"
   },
   {
+   "depends_on": "eval:in_list(['Specific Field','Multiple Fields in DocType','All Fields in DocType'], doc.apply_to)",
    "fieldname": "doctype_name",
    "fieldtype": "Link",
    "label": "DocType",
-   "options": "DocType",
-   "depends_on": "eval:in_list(['Specific Field','Multiple Fields in DocType','All Fields in DocType'], doc.apply_to)"
+   "options": "DocType"
   },
   {
+   "depends_on": "eval:in_list(['Specific Field','Multiple Fields in DocType'], doc.apply_to) || in_list(['Section','Column'], doc.target_element)",
+   "description": "Section/Column break fieldname(s) from Customize Form, or input fieldnames (comma-separated).",
    "fieldname": "fieldname",
    "fieldtype": "Data",
-   "label": "Field Name(s)",
-   "description": "Section/Column break fieldname(s) from Customize Form, or input fieldnames (comma-separated).",
-   "depends_on": "eval:in_list(['Specific Field','Multiple Fields in DocType'], doc.apply_to) || in_list(['Section','Column'], doc.target_element)"
+   "label": "Field Name(s)"
   },
   {
+   "depends_on": "eval:doc.apply_to == 'By Field Type'",
    "fieldname": "field_type",
    "fieldtype": "Select",
    "label": "Field Type",
-   "options": "\nAttach\nAttach Image\nBarcode\nButton\nCheck\nCode\nColor\nCurrency\nData\nDate\nDatetime\nDynamic Link\nEmail\nFloat\nGeolocation\nHTML\nImage\nInt\nJSON\nLink\nLong Text\nMarkdown Editor\nPassword\nPercent\nPhone\nRating\nRead Only\nSelect\nSignature\nSmall Text\nTable\nTable MultiSelect\nText\nText Editor\nTime\nSection Break\nColumn Break\nTab Break",
-   "depends_on": "eval:doc.apply_to == 'By Field Type'"
+   "options": "\nAttach\nAttach Image\nBarcode\nButton\nCheck\nCode\nColor\nCurrency\nData\nDate\nDatetime\nDynamic Link\nEmail\nFloat\nGeolocation\nHTML\nImage\nInt\nJSON\nLink\nLong Text\nMarkdown Editor\nPassword\nPercent\nPhone\nRating\nRead Only\nSelect\nSignature\nSmall Text\nTable\nTable MultiSelect\nText\nText Editor\nTime\nSection Break\nColumn Break\nTab Break"
   },
   {
+   "depends_on": "eval:doc.target_element == 'Field'",
    "fieldname": "section_dimensions",
    "fieldtype": "Section Break",
-   "label": "Field Dimensions",
-   "depends_on": "eval:doc.target_element == 'Field' || !doc.target_element"
+   "label": "Field Dimensions"
   },
   {
+   "depends_on": "eval:doc.target_element == 'Field' || !doc.target_element",
+   "description": "CSS value e.g. 200px, 50%, 20rem",
    "fieldname": "field_width",
    "fieldtype": "Data",
    "label": "Field Width",
-   "description": "CSS value e.g. 200px, 50%, 20rem",
-   "depends_on": "eval:doc.target_element == 'Field' || !doc.target_element"
+   "show_description_on_click": 1
   },
   {
+   "depends_on": "eval:doc.target_element == 'Field' || !doc.target_element",
+   "description": "CSS value e.g. 32px, 4rem",
    "fieldname": "field_height",
    "fieldtype": "Data",
    "label": "Field Height",
-   "description": "CSS value e.g. 32px, 4rem",
-   "depends_on": "eval:doc.target_element == 'Field' || !doc.target_element"
+   "show_description_on_click": 1
   },
   {
-   "fieldname": "column_break_dim",
-   "fieldtype": "Column Break"
-  },
-  {
+   "depends_on": "eval:doc.target_element == 'Column'",
+   "description": "CSS value e.g. 200px, 50%, 20rem",
    "fieldname": "column_width",
    "fieldtype": "Data",
    "label": "Column Width",
-   "description": "CSS value e.g. 300px, 40%",
-   "depends_on": "eval:doc.target_element == 'Column'"
+   "show_description_on_click": 1
   },
   {
+   "depends_on": "eval:doc.target_element == 'Column'",
    "fieldname": "column_height",
    "fieldtype": "Data",
-   "label": "Column Height",
-   "depends_on": "eval:doc.target_element == 'Column'"
+   "label": "Column Height"
   },
   {
+   "depends_on": "eval:doc.target_element == 'Section'",
    "fieldname": "section_section_dims",
    "fieldtype": "Section Break",
-   "label": "Section Dimensions",
-   "depends_on": "eval:doc.target_element == 'Section'"
+   "label": "Section Dimensions"
   },
   {
+   "depends_on": "eval:doc.target_element == 'Section'",
+   "description": "CSS value e.g. 200px, 50%, 20rem",
    "fieldname": "section_width",
    "fieldtype": "Data",
    "label": "Section Width",
-   "depends_on": "eval:doc.target_element == 'Section'"
+   "show_description_on_click": 1
   },
   {
+   "depends_on": "eval:doc.target_element == 'Section'",
    "fieldname": "section_height",
    "fieldtype": "Data",
-   "label": "Section Height",
-   "depends_on": "eval:doc.target_element == 'Section'"
+   "label": "Section Height"
   },
   {
    "fieldname": "section_colors",
@@ -193,16 +197,21 @@
    "options": "\nHighlight\nLift\nGlow"
   },
   {
+   "depends_on": "eval:doc.hover_effect == 'Highlight'",
+   "description": "Used for Highlight effect. Leave blank for default.",
    "fieldname": "hover_bg_color",
    "fieldtype": "Color",
-   "label": "Hover Background Color",
-   "description": "Used for Highlight effect. Leave blank for default.",
-   "depends_on": "eval:doc.hover_effect == 'Highlight'"
+   "label": "Hover Background Color"
+  },
+  {
+   "depends_on": "eval:doc.target_element == 'Column'",
+   "fieldname": "column_dimensions_section",
+   "fieldtype": "Section Break",
+   "label": "Column Dimensions"
   }
  ],
- "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2024-01-01 00:00:00.000000",
+ "modified": "2026-05-25 20:19:16.574446",
  "modified_by": "Administrator",
  "module": "Form Styler",
  "name": "Field Style Rule",
@@ -222,9 +231,9 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
- "track_changes": 1,
- "track_seen": 0
+ "track_changes": 1
 }
