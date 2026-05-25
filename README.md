@@ -15,20 +15,19 @@ bench --site YOUR_SITE install-app form_styler
 bench --site YOUR_SITE migrate
 bench --site YOUR_SITE clear-cache
 ```
-
-## Screenshots
-
-<img width="1888" height="896" alt="image" src="https://github.com/user-attachments/assets/d34cd6a1-735d-4465-a306-1805a63d86df" />
-<img width="1897" height="917" alt="image" src="https://github.com/user-attachments/assets/359272e8-95ac-4ebf-a746-56aa41007962" />
-<img width="1868" height="612" alt="image" src="https://github.com/user-attachments/assets/5a09fb6d-18d3-4991-8b35-887e61f2e244" />
 Replace `YOUR_SITE` with your site name (e.g. `site1.local`).
 
 Then in the browser: **hard refresh** the desk (`Ctrl+Shift+R`).
 
 Confirm the app is loaded: open browser DevTools → Network → filter `form_styler_runtime.js` — it should load with status 200.
 
----
+## Screenshots
 
+<img width="1888" height="896" alt="image" src="https://github.com/user-attachments/assets/d34cd6a1-735d-4465-a306-1805a63d86df" />
+<img width="1897" height="917" alt="image" src="https://github.com/user-attachments/assets/359272e8-95ac-4ebf-a746-56aa41007962" />
+<img width="1868" height="612" alt="image" src="https://github.com/user-attachments/assets/5a09fb6d-18d3-4991-8b35-887e61f2e244" />
+
+---
 ## Create a test rule (Asset form example)
 
 1. Open **Form Styler** (search in Awesomebar).
@@ -60,7 +59,6 @@ For one DocType, always use:
 - **Multiple Fields in DocType** + DocType + `item_code, location`
 
 ---
-
 ## After every rule change
 
 1. **Save Rule** in Form Styler.
