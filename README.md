@@ -20,7 +20,7 @@ Run these on your bench **once**:
 
 ```bash
 cd ~/frappe-bench
-bench get-app $URL_OF_THIS_REPO 
+bench get-app https://github.com/raisulislam0/form_styler.git
 bench --site YOUR_SITE install-app form_styler
 bench --site YOUR_SITE migrate
 bench --site YOUR_SITE clear-cache
@@ -115,3 +115,12 @@ If `rulesLoaded: 1` but `matchingControls: 0` — wrong DocType name or form not
 Same steps: set **Apply To** = **All Fields in DocType**, **DocType** = exact name (`Sales Invoice`, `Customer`, …), save, reload form.
 
 No extra setup per DocType.
+
+## Screenshots
+
+<img width="1888" height="896" alt="image" src="https://github.com/user-attachments/assets/d34cd6a1-735d-4465-a306-1805a63d86df" />
+<img width="1897" height="917" alt="image" src="https://github.com/user-attachments/assets/359272e8-95ac-4ebf-a746-56aa41007962" />
+<img width="1868" height="612" alt="image" src="https://github.com/user-attachments/assets/5a09fb6d-18d3-4991-8b35-887e61f2e244" />
+
+
+
