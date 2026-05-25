@@ -108,6 +108,7 @@ const FormStylerApp = {
 	rules: [],
 	currentRule: null,
 	doctypeFields: {},
+	_fieldsFetchPromises: {}, // Track ongoing fetches per cache key
 
 	// ── Init ──────────────────────────────────────────────────────────────────
 	async init(wrapper, page) {
@@ -245,7 +246,7 @@ const FormStylerApp = {
 			priority: 10,
 			apply_to: "Multiple Fields in DocType",
 			target_element: "Field",
-			doctype_name: "",
+			doctype_name: "Employee",
 			fieldname: "",
 			field_type: "Data",
 			field_width: "",
@@ -395,9 +396,17 @@ const FormStylerApp = {
 </div>`;
 
 		this._bindEditorEvents(editor);
-		this._updateCriteria();
-		this._updateDimensions();
-		this._updateCSSPreview();
+		// Async setup of criteria — waits for data to be pre-fetched
+		this._updateCriteria()
+			.then(() => {
+				this._updateDimensions();
+				this._updateCSSPreview();
+			})
+			.catch(err => {
+				console.error("[_renderEditor] Error updating criteria:", err);
+				this._updateDimensions();
+				this._updateCSSPreview();
+			});
 	},
 
 	_bindEditorEvents(editor) {
@@ -431,6 +440,7 @@ const FormStylerApp = {
 					r.apply_to = "Multiple Fields in DocType";
 				
 					Object.keys(self.doctypeFields).forEach((k) => delete self.doctypeFields[k]);
+					Object.keys(self._fieldsFetchPromises).forEach((k) => delete self._fieldsFetchPromises[k]);
 					self._updateCriteria();
 					self._updateDimensions();
 				}
@@ -489,14 +499,28 @@ const FormStylerApp = {
 	async _loadDoctypeFields(doctype, target) {
 		if (!doctype) return [];
 		const cacheKey = `${doctype}::${target || "Field"}`;
-		if (this.doctypeFields[cacheKey]) return this.doctypeFields[cacheKey];
-		const res = await frappe.call({
-			method: "form_styler.utils.get_doctype_fields",
-			args: { doctype_name: doctype, target_element: target || "Field" },
-		});
-		const fields = res.message || [];
-		this.doctypeFields[cacheKey] = fields;
-		return fields;
+		if (this.doctypeFields[cacheKey]) {
+			console.log(`[Cache HIT] ${cacheKey}:`, this.doctypeFields[cacheKey].length, "fields");
+			return this.doctypeFields[cacheKey];
+		}
+		try {
+			console.log(`[Fetching] ${doctype} (target: ${target || "Field"})...`);
+			const res = await frappe.call({
+				method: "form_styler.utils.get_doctype_fields",
+				args: { doctype_name: doctype, target_element: target || "Field" },
+			});
+			const fields = res.message || [];
+			console.log(`[Fetched] ${cacheKey}: ${fields.length} fields`);
+			if (fields.length === 0) {
+				console.warn(`⚠ WARNING: Backend returned 0 fields for ${doctype}`);
+			}
+			this.doctypeFields[cacheKey] = fields;
+			return fields;
+		} catch (err) {
+			console.error(`[ERROR] Failed to fetch fields for ${doctype}:`, err);
+			this.doctypeFields[cacheKey] = [];
+			return [];
+		}
 	},
 
 	_destroyScopeControls() {
@@ -550,37 +574,61 @@ const FormStylerApp = {
 	async _getTargetOptions(txt) {
 		const r = this.currentRule;
 		const dt = r.doctype_name;
-		if (!dt) return [];
-
-		this._setTargetLoading(true);
-		try {
-			const fields = await this._loadDoctypeFields(dt, r.target_element || "Field");
-			const term = (txt || "").toLowerCase();
-			const filtered = fields.filter((f) => {
-				if (!term) return true;
-				return (
-					f.fieldname.toLowerCase().includes(term) ||
-					(f.label || "").toLowerCase().includes(term) ||
-					f.fieldtype.toLowerCase().includes(term)
-				);
-			});
-			const options = filtered.map((f) => ({
-				value: f.fieldname,
-				label: f.label || f.fieldname,
-				description: f.fieldtype,
-			}));
-			options.unshift({
-				value: "__all__",
-				label: __("All in this DocType"),
-				description: __("Style every matching element"),
-			});
-			return options;
-		} finally {
-			this._setTargetLoading(false);
+		if (!dt) {
+			console.log("[getTargetOptions] No doctype selected");
+			return [];
 		}
+
+		const cacheKey = `${dt}::${r.target_element || "Field"}`;
+		const self = this;
+		
+		// If not in cache, fetch it now
+		if (!this.doctypeFields[cacheKey]) {
+			console.log(`[getTargetOptions] Cache miss for ${cacheKey}, fetching...`);
+			this._setTargetLoading(true);
+			try {
+				await this._loadDoctypeFields(dt, r.target_element || "Field");
+				console.log(`[getTargetOptions] Fetch complete, cache now has data`);
+				this._setTargetLoading(false);
+			} catch (err) {
+				console.error(`[getTargetOptions] Error fetching for ${cacheKey}:`, err);
+				this._setTargetLoading(false);
+			}
+		} else {
+			console.log(`[getTargetOptions] Using cache for ${cacheKey}`);
+		}
+
+		// Get cached data (now guaranteed to exist)
+		const fields = this.doctypeFields[cacheKey] || [];
+		console.log(`[getTargetOptions] Returning options: ${fields.length} total fields`);
+		
+		const term = (txt || "").toLowerCase();
+		const filtered = fields.filter((f) => {
+			if (!term) return true;
+			return (
+				f.fieldname.toLowerCase().includes(term) ||
+				(f.label || "").toLowerCase().includes(term) ||
+				f.fieldtype.toLowerCase().includes(term)
+			);
+		});
+
+		let options = filtered.map((f) => ({
+			value: f.fieldname,
+			label: f.label || f.fieldname,
+			description: f.fieldtype,
+		}));
+
+		options.unshift({
+			value: "__all__",
+			label: __("All in this DocType"),
+			description: __("Style every matching element"),
+		});
+
+		console.log(`[getTargetOptions] After filter: ${options.length} options for term "${txt || ""}"`);
+		return options;
 	},
 
-	_setupScopeControls(area) {
+	async _setupScopeControls(area) {
 		const self = this;
 		const r = this.currentRule;
 		this._destroyScopeControls();
@@ -590,6 +638,7 @@ const FormStylerApp = {
 		const tgtMount = area.querySelector("#fs-target-mount");
 		if (!dtMount || !tgtMount) return;
 
+		// ── Build controls ────────────────────────────────────────────────
 		this._doctypeCtrl = frappe.ui.form.make_control({
 			parent: dtMount,
 			df: {
@@ -598,13 +647,13 @@ const FormStylerApp = {
 				options: "DocType",
 				fieldname: "doctype_name",
 				reqd: 1,
+				get_query: () => ({
+					filters: { in_create: 0, istable: 0, issingle: 0, name: ["!=", "Access Log"] }
+				})
 			},
 			render_input: true,
 		});
 		this._scopeControls.doctype = this._doctypeCtrl;
-		if (r.doctype_name) {
-			this._doctypeCtrl.set_value(r.doctype_name);
-		}
 
 		this._targetCtrl = frappe.ui.form.make_control({
 			parent: tgtMount,
@@ -613,42 +662,113 @@ const FormStylerApp = {
 				fieldtype: "MultiSelectList",
 				fieldname: "fieldname",
 				reqd: 1,
-				get_data(txt) {
-					return self._getTargetOptions(txt);
-				},
+				get_data(txt) { return self._getTargetOptions(txt); },
 			},
 			render_input: true,
 		});
 		this._scopeControls.target = this._targetCtrl;
 
+		// ── Pre-warm cache for already-known doctype (editing existing rule) ──
+		if (r.doctype_name) {
+			const cacheKey = `${r.doctype_name}::${r.target_element || "Field"}`;
+			if (!this.doctypeFields[cacheKey]) {
+				this._setTargetLoading(true);
+				await this._loadDoctypeFields(r.doctype_name, r.target_element || "Field")
+					.finally(() => this._setTargetLoading(false));
+			}
+		} 
+
+		// ── Snapshot initial fieldname values ─────────────────────────────
 		const initial =
 			r.fieldname === "__all__" || r.apply_to === "All Fields in DocType"
 				? ["__all__"]
-				: (r.fieldname || "")
-						.split(",")
-						.map((s) => s.trim())
-						.filter(Boolean);
-		if (initial.length) {
-			this._targetCtrl.set_value(initial);
-		}
+				: (r.fieldname || "").split(",").map(s => s.trim()).filter(Boolean);
+
+		// ── Guards ────────────────────────────────────────────────────────
+		// `locked`  → guards TARGET handler during _forceTargetValues init only.
+		// `lastDt`  → guards DOCTYPE handler: programmatic set_value fires change
+		//             with the SAME value (skipped); a real user pick has a
+		//             DIFFERENT value (proceeds). No timing window at all.
+		let locked = true;
+		let lastDt = r.doctype_name || "";
 
 		this._doctypeCtrl.$input.on("change", () => {
-			r.doctype_name = self._doctypeCtrl.get_value() || "";
-			Object.keys(self.doctypeFields).forEach((k) => delete self.doctypeFields[k]);
-			if (self._targetCtrl) {
-				self._targetCtrl.set_value([]);
-				r.fieldname = "";
+			const newDt = self._doctypeCtrl.get_value() || "";
+			if (newDt === lastDt) return; // same value = validation echo, skip
+			lastDt = newDt;
+			r.doctype_name = newDt;
+			console.log("[doctypeChange] Doctype changed to:", newDt);
+
+			// Clear stale cache
+			Object.keys(self.doctypeFields).forEach(k => delete self.doctypeFields[k]);
+			Object.keys(self._fieldsFetchPromises).forEach(k => delete self._fieldsFetchPromises[k]);
+
+			// Reset target selection
+			if (self._targetCtrl) { self._targetCtrl.set_value([]); r.fieldname = ""; }
+
+			// *** KEY FIX: eagerly pre-warm cache for the new doctype so the
+			// Fields dropdown has data ready before the user opens it ***
+			if (newDt) {
+				self._setTargetLoading(true);
+				self._loadDoctypeFields(newDt, r.target_element || "Field")
+					.finally(() => self._setTargetLoading(false));
 			}
 			self._updateCSSPreview();
 		});
 
 		this._targetCtrl.$input.on("change", () => {
+			if (locked) return; // prevents init-time _forceTargetValues cascade
 			self._syncSelectionFromTargetControl();
 			self._updateCSSPreview();
 		});
+
+		// Trigger initial doctype value — fires validation → change → lastDt guard skips it ✓
+		if (r.doctype_name) {
+			this._doctypeCtrl.set_value(r.doctype_name);
+		}
+
+		// Release target lock after initial values are confirmed
+		if (initial.length) {
+			this._forceTargetValues(this._targetCtrl, initial, () => { locked = false; });
+		} else {
+			setTimeout(() => { locked = false; }, 5000);
+		}
+	},
+	// Retries set_value until get_value() confirms the values are actually set.
+	// Gives up after MAX attempts and releases the lock regardless.
+	_forceTargetValues(ctrl, values, onDone, attempt = 0) {
+		const MAX = 15, INTERVAL = 200;
+
+		try {
+			// Stop if ctrl was removed from DOM (controls were rebuilt)
+			if (!ctrl?.$wrapper || !document.contains(ctrl.$wrapper[0])) {
+				onDone?.();
+				return;
+			}
+
+			ctrl.set_value(values);
+
+			setTimeout(() => {
+				try {
+					let got = ctrl.get_value() ?? null;
+					got = Array.isArray(got)
+						? got
+						: got ? String(got).split(",").map(s => s.trim()) : [];
+
+					const confirmed = values.every(v => got.includes(v));
+
+					if (confirmed || attempt >= MAX) {
+						onDone?.(); // ← lock released here, only after values visible
+					} else {
+						this._forceTargetValues(ctrl, values, onDone, attempt + 1);
+					}
+				} catch (_) { onDone?.(); }
+			}, INTERVAL);
+
+		} catch (_) { onDone?.(); }
 	},
 
-	_updateCriteria() {
+	async _updateCriteria() {
 		const r = this.currentRule;
 		const area = document.getElementById("fs-criteria-area");
 		if (!area) return;
@@ -662,19 +782,20 @@ const FormStylerApp = {
 					: __("Pick input field name(s)");
 
 		area.innerHTML = `
-<div class="fs-scope-controls" style="margin-top:12px">
-  <div id="fs-doctype-mount"></div>
-  <div class="fs-field-group" style="margin-top:10px">
-    <div id="fs-target-mount"></div>
-    <div id="fs-target-loading" class="fs-target-loading hide">
-      <span class="spinner-border spinner-border-sm" role="status"></span>
-      ${__("Loading fields…")}
-    </div>
-    <p class="text-muted small" style="margin:8px 0 0">${hint}</p>
-  </div>
-</div>`;
+	<div class="fs-scope-controls" style="margin-top:12px">
+	<div id="fs-doctype-mount"></div>
+	<div class="fs-field-group" style="margin-top:10px">
+		<div id="fs-target-mount"></div>
+		<div id="fs-target-loading" class="fs-target-loading hide">
+		<span class="spinner-border spinner-border-sm" role="status"></span>
+		${__("Loading fields…")}
+		</div>
+		<p class="text-muted small" style="margin:8px 0 0">${hint}</p>
+	</div>
+	</div>`;
 
-		this._setupScopeControls(area);
+		// AWAIT the setup to complete before returning — don't let dropdown be opened until data ready
+		await this._setupScopeControls(area);
 	},
 
 	_bindResizePanel(host) {
@@ -839,7 +960,11 @@ const FormStylerApp = {
 				const saved = typeof res.message === "object" ? res.message : { name: res.message };
 				r.name = saved.name || res.message;
 				await this.loadRules();
-				this._renderRuleList(this.rules);
+
+				// ✅ Re-open editor with fresh rule from server so MultiSelectList re-hydrates correctly
+				const freshRule = this.rules.find((ru) => ru.name === r.name);
+				if (freshRule) this.openEditor(freshRule);
+				else this._renderRuleList(this.rules);
 
 				if (window.FormStyler) {
 					const result = await FormStyler.reloadAndInject();

@@ -11,6 +11,10 @@
     background: var(--card-bg);
 }
 
+.fs-styled-layout {
+    border-radius: 10px !important;
+}
+
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 .fs-sidebar {
     width: 280px;
