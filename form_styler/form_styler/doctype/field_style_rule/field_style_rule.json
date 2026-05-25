@@ -92,14 +92,14 @@
    "fieldname": "fieldname",
    "fieldtype": "Data",
    "label": "Field Name(s)",
-   "description": "For 'Specific Field': enter one fieldname. For 'Multiple Fields': enter comma-separated fieldnames.",
-   "depends_on": "eval:in_list(['Specific Field','Multiple Fields in DocType'], doc.apply_to)"
+   "description": "Section/Column break fieldname(s) from Customize Form, or input fieldnames (comma-separated).",
+   "depends_on": "eval:in_list(['Specific Field','Multiple Fields in DocType'], doc.apply_to) || in_list(['Section','Column'], doc.target_element)"
   },
   {
    "fieldname": "field_type",
    "fieldtype": "Select",
    "label": "Field Type",
-   "options": "\nAttach\nAttach Image\nBarcode\nButton\nCheck\nCode\nColor\nCurrency\nData\nDate\nDatetime\nDynamic Link\nEmail\nFloat\nGeolocation\nHTML\nImage\nInt\nJSON\nLink\nLong Text\nMarkdown Editor\nPassword\nPercent\nPhone\nRating\nRead Only\nSelect\nSignature\nSmall Text\nTable\nTable MultiSelect\nText\nText Editor\nTime",
+   "options": "\nAttach\nAttach Image\nBarcode\nButton\nCheck\nCode\nColor\nCurrency\nData\nDate\nDatetime\nDynamic Link\nEmail\nFloat\nGeolocation\nHTML\nImage\nInt\nJSON\nLink\nLong Text\nMarkdown Editor\nPassword\nPercent\nPhone\nRating\nRead Only\nSelect\nSignature\nSmall Text\nTable\nTable MultiSelect\nText\nText Editor\nTime\nSection Break\nColumn Break\nTab Break",
    "depends_on": "eval:doc.apply_to == 'By Field Type'"
   },
   {

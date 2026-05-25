@@ -130,21 +130,33 @@ def get_style_rules_status():
     }
 
 
+LAYOUT_FIELDTYPES = frozenset({"Section Break", "Column Break", "Tab Break"})
+
+
 @frappe.whitelist()
-def get_doctype_fields(doctype_name):
-    """Returns field list for a given DocType (used in Page UI field selector)."""
+def get_doctype_fields(doctype_name, target_element=None):
+    """Return all DocType fields for the Form Styler picker (incl. section/column breaks)."""
     if not doctype_name:
         return []
     try:
         meta = frappe.get_meta(doctype_name)
         fields = []
         for f in meta.fields:
-            if f.fieldtype not in ("Section Break", "Column Break", "Tab Break", "HTML"):
-                fields.append({
-                    "fieldname": f.fieldname,
-                    "label": f.label or f.fieldname,
-                    "fieldtype": f.fieldtype,
-                })
+            if f.fieldtype == "HTML":
+                continue
+            entry = {
+                "fieldname": f.fieldname,
+                "label": f.label or f.fieldname,
+                "fieldtype": f.fieldtype,
+                "is_layout": f.fieldtype in LAYOUT_FIELDTYPES,
+            }
+            if target_element == "Section" and f.fieldtype not in ("Section Break", "Tab Break"):
+                continue
+            if target_element == "Column" and f.fieldtype != "Column Break":
+                continue
+            if target_element == "Field" and f.fieldtype in LAYOUT_FIELDTYPES:
+                continue
+            fields.append(entry)
         return fields
     except Exception:
         return []

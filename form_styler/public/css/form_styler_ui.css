@@ -396,3 +396,154 @@
 .fs-page-wrapper {
     padding: 0;
 }
+
+/* ── Field picker (doctype fields) ───────────────────────────────────────── */
+.fs-field-picker {
+    margin-top: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    background: var(--fg-color);
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.fs-field-picker-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--subtle-fg);
+}
+
+.fs-field-picker-head label {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.fs-field-picker-group {
+    padding: 8px 12px 4px;
+}
+
+.fs-field-picker-group-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.fs-field-picker-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.fs-field-picker-item input {
+    margin: 0;
+}
+
+.fs-field-picker-empty {
+    padding: 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+/* ── Drag resize panel ───────────────────────────────────────────────────── */
+.fs-resize-panel {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 16px;
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .fs-resize-panel {
+        grid-template-columns: 1fr;
+    }
+}
+
+.fs-resize-stage {
+    border: 1px dashed var(--border-color);
+    border-radius: var(--border-radius-lg);
+    background: var(--subtle-fg);
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.fs-resize-box {
+    position: relative;
+    background: var(--card-bg);
+    border: 2px solid var(--primary);
+    border-radius: var(--border-radius);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    min-width: 80px;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+}
+
+.fs-resize-box-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    pointer-events: none;
+    user-select: none;
+    padding: 8px;
+    text-align: center;
+}
+
+.fs-resize-handle {
+    position: absolute;
+    right: -6px;
+    bottom: -6px;
+    width: 14px;
+    height: 14px;
+    background: var(--primary);
+    border: 2px solid var(--card-bg);
+    border-radius: 2px;
+    cursor: se-resize;
+}
+
+.fs-resize-sliders label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    margin-top: 10px;
+}
+
+.fs-resize-sliders label:first-child {
+    margin-top: 0;
+}
+
+.fs-resize-sliders input[type="range"] {
+    width: 100%;
+}
+
+.fs-resize-value {
+    font-size: 12px;
+    font-family: monospace;
+    color: var(--text-color);
+    margin-top: 2px;
+}
+
+.fs-resize-unit {
+    margin-top: 12px;
+}

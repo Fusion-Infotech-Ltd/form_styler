@@ -55,6 +55,9 @@ const FIELD_TYPES = [
 	"Text",
 	"Text Editor",
 	"Time",
+	"Section Break",
+	"Column Break",
+	"Tab Break",
 ];
 
 const HOVER_EFFECTS = {
@@ -88,6 +91,14 @@ const HOVER_EFFECTS = {
     transition: all 0.2s ease;
   }`,
 	},
+};
+
+const LAYOUT_FIELDTYPES = new Set(["Section Break", "Column Break", "Tab Break"]);
+
+const DIM_KEYS = {
+	Field: { w: "field_width", h: "field_height", label: "Field", wMax: 600, hMax: 200 },
+	Column: { w: "column_width", h: "column_height", label: "Column", wMax: 900, hMax: 600 },
+	Section: { w: "section_width", h: "section_height", label: "Section", wMax: 1200, hMax: 800 },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -307,8 +318,8 @@ const FormStylerApp = {
 
     <!-- SECTION: Dimensions -->
     <div class="fs-section" id="fs-dim-section">
-      <div class="fs-section-title">2 · Dimensions</div>
-      <div class="fs-grid-2" id="fs-dim-grid"></div>
+      <div class="fs-section-title">2 · Dimensions <span style="font-weight:400;color:var(--text-muted)">— drag corner or use sliders</span></div>
+      <div id="fs-resize-host"></div>
     </div>
 
     <!-- SECTION: Colors -->
@@ -428,8 +439,13 @@ const FormStylerApp = {
 					}
 				}
 				// Cascade updates
-				if (field === "apply_to") self._updateCriteria();
-				if (field === "target_element") self._updateDimensions();
+				if (field === "apply_to" || field === "target_element") {
+					if (field === "target_element") {
+						Object.keys(self.doctypeFields).forEach((k) => delete self.doctypeFields[k]);
+					}
+					self._updateCriteria();
+					self._updateDimensions();
+				}
 				self._updateCSSPreview();
 			});
 		});
@@ -470,78 +486,122 @@ const FormStylerApp = {
 		}
 	},
 
-	_updateCriteria() {
-		const r = this.currentRule;
-		const area = document.getElementById("fs-criteria-area");
-		if (!area) return;
+	_parseCssPx(val, fallback) {
+		if (!val) return fallback;
+		const m = String(val).match(/^([\d.]+)\s*(px|%|rem|em)?$/);
+		if (!m) return fallback;
+		return { num: parseFloat(m[1]), unit: m[2] || "px" };
+	},
 
-		if (r.apply_to === "By Field Type") {
-			area.innerHTML = `
-<div class="fs-grid-2" style="margin-top:12px">
-  <div class="fs-field-group">
-    <label>Field Type</label>
-    <select class="form-control form-control-sm" data-field="field_type">
-      ${FIELD_TYPES.map((t) => `<option ${r.field_type === t ? "selected" : ""}>${t}</option>`).join("")}
-    </select>
-  </div>
-</div>`;
-		} else if (r.apply_to === "Specific Field") {
-			area.innerHTML = `
-<div class="fs-grid-2" style="margin-top:12px">
-  <div class="fs-field-group">
-    <label>DocType</label>
-    <div class="fs-doctype-wrap">
-      <input class="form-control form-control-sm fs-doctype-input" data-field="doctype_name"
-             placeholder="e.g. Sales Order" value="${r.doctype_name || ""}" />
-    </div>
-  </div>
-  <div class="fs-field-group">
-    <label>Field Name</label>
-    <div class="input-group">
-      <input class="form-control form-control-sm" data-field="fieldname"
-             placeholder="e.g. customer" value="${r.fieldname || ""}" />
-      <button class="btn btn-default btn-sm fs-pick-field-btn" style="white-space:nowrap">Browse ▾</button>
-    </div>
-  </div>
-</div>`;
-			this._bindDoctypeInput(area);
-		} else if (r.apply_to === "Multiple Fields in DocType") {
-			area.innerHTML = `
-<div class="fs-grid-2" style="margin-top:12px">
-  <div class="fs-field-group">
-    <label>DocType</label>
-    <input class="form-control form-control-sm fs-doctype-input" data-field="doctype_name"
-           placeholder="e.g. Sales Order" value="${r.doctype_name || ""}" />
-  </div>
-  <div class="fs-field-group">
-    <label>Field Names <small>(comma-separated)</small></label>
-    <div class="input-group">
-      <input class="form-control form-control-sm" data-field="fieldname"
-             placeholder="e.g. customer, territory, currency" value="${r.fieldname || ""}" />
-      <button class="btn btn-default btn-sm fs-pick-field-btn" style="white-space:nowrap">Browse ▾</button>
-    </div>
-  </div>
-</div>`;
-			this._bindDoctypeInput(area);
-		} else if (r.apply_to === "All Fields in DocType") {
-			area.innerHTML = `
-<div class="fs-grid-2" style="margin-top:12px">
-  <div class="fs-field-group">
-    <label>DocType</label>
-    <input class="form-control form-control-sm fs-doctype-input" data-field="doctype_name"
-           placeholder="e.g. Sales Order" value="${r.doctype_name || ""}" />
-  </div>
-</div>`;
-			this._bindDoctypeInput(area);
+	_formatCssSize(num, unit) {
+		if (unit === "%") return `${Math.round(num)}%`;
+		return `${Math.round(num)}px`;
+	},
+
+	async _loadDoctypeFields(doctype, target) {
+		if (!doctype) return [];
+		const cacheKey = `${doctype}::${target || "Field"}`;
+		if (this.doctypeFields[cacheKey]) return this.doctypeFields[cacheKey];
+		const res = await frappe.call({
+			method: "form_styler.utils.get_doctype_fields",
+			args: { doctype_name: doctype, target_element: target || "Field" },
+		});
+		const fields = res.message || [];
+		this.doctypeFields[cacheKey] = fields;
+		return fields;
+	},
+
+	_syncPickerToRule(checkedNames, allChecked) {
+		const r = this.currentRule;
+		if (allChecked) {
+			r.apply_to = "All Fields in DocType";
+			r.fieldname = "";
+		} else if (checkedNames.length === 1) {
+			r.apply_to = "Specific Field";
+			r.fieldname = checkedNames[0];
+		} else if (checkedNames.length > 1) {
+			r.apply_to = "Multiple Fields in DocType";
+			r.fieldname = checkedNames.join(", ");
+		} else {
+			r.fieldname = "";
+		}
+	},
+
+	async _renderFieldPicker(area) {
+		const self = this;
+		const r = this.currentRule;
+		const picker = area.querySelector("#fs-field-picker");
+		if (!picker) return;
+
+		const dt = r.doctype_name;
+		const target = r.target_element || "Field";
+		if (!dt) {
+			picker.innerHTML = `<div class="fs-field-picker-empty">Select a DocType to list fields</div>`;
+			return;
 		}
 
-		// Re-bind generic field events on new elements
-		const self = this;
-		area.querySelectorAll("[data-field]").forEach((el) => {
-			const field = el.dataset.field;
-			const evt = el.tagName === "SELECT" ? "change" : "input";
-			el.addEventListener(evt, (e) => {
-				self.currentRule[field] = e.target.value;
+		picker.innerHTML = `<div class="fs-field-picker-empty">Loading fields…</div>`;
+		const fields = await this._loadDoctypeFields(dt, target);
+		if (!fields.length) {
+			picker.innerHTML = `<div class="fs-field-picker-empty">No fields for this target</div>`;
+			return;
+		}
+
+		const selected = new Set(
+			(r.fieldname || "").split(",").map((s) => s.trim()).filter(Boolean),
+		);
+		const allMode = r.apply_to === "All Fields in DocType";
+
+		const layout = fields.filter((f) => f.is_layout);
+		const inputs = fields.filter((f) => !f.is_layout);
+
+		const renderGroup = (title, list) => {
+			if (!list.length) return "";
+			return `
+<div class="fs-field-picker-group">
+  <div class="fs-field-picker-group-title">${title}</div>
+  ${list
+		.map(
+			(f) => `
+  <label class="fs-field-picker-item">
+    <input type="checkbox" class="fs-field-chk" value="${f.fieldname}"
+      ${allMode || selected.has(f.fieldname) ? "checked" : ""} ${allMode ? "disabled" : ""} />
+    <span>${frappe.utils.escape_html(f.label || f.fieldname)}</span>
+    <span style="color:var(--text-muted);font-size:10px">(${f.fieldtype})</span>
+  </label>`,
+		)
+		.join("")}
+</div>`;
+		};
+
+		picker.innerHTML = `
+<div class="fs-field-picker-head">
+  <label><input type="checkbox" class="fs-all-fields" ${allMode ? "checked" : ""} /> All in DocType</label>
+  <span style="font-size:11px;color:var(--text-muted)">${fields.length} items</span>
+</div>
+${renderGroup("Section / column breaks", layout)}
+${renderGroup("Fields", inputs)}`;
+
+		const allCb = picker.querySelector(".fs-all-fields");
+		allCb.addEventListener("change", (e) => {
+			if (e.target.checked) {
+				r.apply_to = "All Fields in DocType";
+				r.fieldname = "";
+				self._renderFieldPicker(area);
+			} else {
+				r.apply_to = "Multiple Fields in DocType";
+				self._syncPickerToRule([], false);
+				self._renderFieldPicker(area);
+			}
+			self._updateCSSPreview();
+		});
+
+		picker.querySelectorAll(".fs-field-chk").forEach((chk) => {
+			chk.addEventListener("change", () => {
+				const names = [...picker.querySelectorAll(".fs-field-chk:checked")].map(
+					(c) => c.value,
+				);
+				self._syncPickerToRule(names, false);
 				self._updateCSSPreview();
 			});
 		});
@@ -550,130 +610,208 @@ const FormStylerApp = {
 	_bindDoctypeInput(area) {
 		const self = this;
 		const doctypeInput = area.querySelector(".fs-doctype-input");
-		if (doctypeInput) {
-			// Autocomplete using frappe's built-in
-			$(doctypeInput).autocomplete({
-				source: function (req, resp) {
-					frappe
-						.call({
-							method: "frappe.client.get_list",
-							args: {
-								doctype: "DocType",
-								filters: [["name", "like", `%${req.term}%`]],
-								fields: ["name"],
-								limit: 10,
-							},
-						})
-						.then((r) => resp((r.message || []).map((d) => d.name)));
-				},
-				select: function (event, ui) {
-					self.currentRule.doctype_name = ui.item.value;
-					self._updateCSSPreview();
-				},
+		if (!doctypeInput) return;
+
+		const onDtChange = async () => {
+			self.currentRule.doctype_name = doctypeInput.value.trim();
+			delete self.doctypeFields[`${self.currentRule.doctype_name}::Field`];
+			await self._renderFieldPicker(area);
+			self._updateCSSPreview();
+		};
+
+		doctypeInput.addEventListener("change", onDtChange);
+		doctypeInput.addEventListener("blur", onDtChange);
+
+		$(doctypeInput).autocomplete({
+			source: function (req, resp) {
+				frappe
+					.call({
+						method: "frappe.client.get_list",
+						args: {
+							doctype: "DocType",
+							filters: [["name", "like", `%${req.term}%`]],
+							fields: ["name"],
+							limit: 15,
+						},
+					})
+					.then((res) => resp((res.message || []).map((d) => d.name)));
+			},
+			select: function (_event, ui) {
+				doctypeInput.value = ui.item.value;
+				onDtChange();
+			},
+		});
+	},
+
+	_updateCriteria() {
+		const r = this.currentRule;
+		const area = document.getElementById("fs-criteria-area");
+		if (!area) return;
+		const target = r.target_element || "Field";
+
+		if (r.apply_to === "By Field Type") {
+			area.innerHTML = `
+<div class="fs-grid-2" style="margin-top:12px">
+  <div class="fs-field-group">
+    <label>Field Type <small>(all forms)</small></label>
+    <select class="form-control form-control-sm" data-field="field_type">
+      ${FIELD_TYPES.map((t) => `<option ${r.field_type === t ? "selected" : ""}>${t}</option>`).join("")}
+    </select>
+  </div>
+  <div class="fs-field-group">
+    <label>Also match layout breaks</label>
+    <select class="form-control form-control-sm" data-field="field_type" disabled style="display:none"></select>
+    <p class="text-muted small" style="margin:6px 0 0">Use <b>Section Break</b> or <b>Column Break</b> as Field Type when Target is Section/Column.</p>
+  </div>
+</div>`;
+		} else {
+			area.innerHTML = `
+<div style="margin-top:12px">
+  <div class="fs-field-group">
+    <label>DocType</label>
+    <input class="form-control form-control-sm fs-doctype-input" data-field="doctype_name"
+           placeholder="e.g. Asset, Sales Invoice" value="${frappe.utils.escape_html(r.doctype_name || "")}" />
+  </div>
+  <p class="text-muted small" style="margin:8px 0 4px">
+    Select field(s) below — includes <b>Section Break</b> and <b>Column Break</b> names from Customize Form.
+  </p>
+  <div id="fs-field-picker" class="fs-field-picker"></div>
+</div>`;
+			this._bindDoctypeInput(area);
+			this._renderFieldPicker(area);
+		}
+
+		const self = this;
+		area.querySelectorAll("[data-field]").forEach((el) => {
+			if (el.classList.contains("fs-doctype-input")) return;
+			const field = el.dataset.field;
+			el.addEventListener("change", (e) => {
+				self.currentRule[field] = e.target.value;
+				self._updateCSSPreview();
+			});
+		});
+	},
+
+	_bindResizePanel(host) {
+		const self = this;
+		const r = this.currentRule;
+		const target = r.target_element || "Field";
+		const keys = DIM_KEYS[target] || DIM_KEYS.Field;
+
+		const box = host.querySelector(".fs-resize-box");
+		const handle = host.querySelector(".fs-resize-handle");
+		const wRange = host.querySelector(".fs-resize-w");
+		const hRange = host.querySelector(".fs-resize-h");
+		const wVal = host.querySelector(".fs-resize-w-val");
+		const hVal = host.querySelector(".fs-resize-h-val");
+		const unitSel = host.querySelector(".fs-resize-unit-sel");
+		const boxLabel = host.querySelector(".fs-resize-box-label");
+
+		if (boxLabel) {
+			boxLabel.textContent = `${keys.label} preview — drag corner`;
+		}
+
+		const wParsed = this._parseCssPx(r[keys.w], { num: 200, unit: "px" });
+		const hParsed = this._parseCssPx(r[keys.h], { num: 40, unit: "px" });
+		const unit = wParsed.unit === "%" ? "%" : "px";
+		if (unitSel) unitSel.value = unit;
+
+		const applySize = (wNum, hNum, unitType) => {
+			const wCss = this._formatCssSize(wNum, unitType);
+			const hCss = this._formatCssSize(hNum, unitType);
+			r[keys.w] = wCss;
+			r[keys.h] = hCss;
+			if (unitType === "px") {
+				box.style.width = wCss;
+				box.style.maxWidth = wCss;
+				box.style.height = hCss;
+				box.style.minHeight = hCss;
+			} else {
+				box.style.width = wCss;
+				box.style.height = hCss;
+			}
+			if (wRange) wRange.value = wNum;
+			if (hRange) hRange.value = hNum;
+			if (wVal) wVal.textContent = wCss;
+			if (hVal) hVal.textContent = hCss;
+			self._updateCSSPreview();
+		};
+
+		applySize(wParsed.num, hParsed.num, unit);
+
+		if (wRange) {
+			wRange.addEventListener("input", (e) => {
+				applySize(Number(e.target.value), Number(hRange.value), unitSel.value);
+			});
+		}
+		if (hRange) {
+			hRange.addEventListener("input", (e) => {
+				applySize(Number(wRange.value), Number(e.target.value), unitSel.value);
+			});
+		}
+		if (unitSel) {
+			unitSel.addEventListener("change", (e) => {
+				applySize(Number(wRange.value), Number(hRange.value), e.target.value);
 			});
 		}
 
-		const pickBtn = area.querySelector(".fs-pick-field-btn");
-		if (pickBtn) {
-			pickBtn.addEventListener("click", async () => {
-				const dt = self.currentRule.doctype_name;
-				if (!dt) {
-					frappe.msgprint("Select a DocType first.");
-					return;
-				}
-				const res = await frappe.call({
-					method: "form_styler.utils.get_doctype_fields",
-					args: { doctype_name: dt },
-				});
-				const fields = res.message || [];
-				if (!fields.length) {
-					frappe.msgprint("No fields found.");
-					return;
-				}
-
-				const isMulti = self.currentRule.apply_to === "Multiple Fields in DocType";
-				const d = new frappe.ui.Dialog({
-					title: `Fields in ${dt}`,
-					fields: [
-						{
-							fieldname: "chosen",
-							fieldtype: isMulti ? "MultiCheck" : "Select",
-							label: "Select Field(s)",
-							options: isMulti
-								? fields.map((f) => ({
-										label: `${f.label || f.fieldname} (${f.fieldtype})`,
-										value: f.fieldname,
-									}))
-								: fields.map((f) => f.fieldname).join("\n"),
-						},
-					],
-					primary_action_label: "Apply",
-					primary_action(vals) {
-						const chosen = Array.isArray(vals.chosen)
-							? vals.chosen.join(", ")
-							: vals.chosen;
-						self.currentRule.fieldname = chosen;
-						const inp = area.querySelector("[data-field='fieldname']");
-						if (inp) inp.value = chosen;
-						self._updateCSSPreview();
-						d.hide();
-					},
-				});
-				d.show();
+		if (handle) {
+			let startX, startY, startW, startH;
+			const onMove = (ev) => {
+				const nw = Math.max(40, startW + (ev.clientX - startX));
+				const nh = Math.max(24, startH + (ev.clientY - startY));
+				applySize(nw, nh, "px");
+				if (unitSel) unitSel.value = "px";
+			};
+			const onUp = () => {
+				document.removeEventListener("mousemove", onMove);
+				document.removeEventListener("mouseup", onUp);
+			};
+			handle.addEventListener("mousedown", (e) => {
+				e.preventDefault();
+				startX = e.clientX;
+				startY = e.clientY;
+				startW = box.offsetWidth;
+				startH = box.offsetHeight;
+				document.addEventListener("mousemove", onMove);
+				document.addEventListener("mouseup", onUp);
 			});
 		}
 	},
 
 	_updateDimensions() {
 		const r = this.currentRule;
-		const grid = document.getElementById("fs-dim-grid");
-		const section = document.getElementById("fs-dim-section");
-		if (!grid || !section) return;
+		const host = document.getElementById("fs-resize-host");
+		if (!host) return;
 
 		const target = r.target_element || "Field";
-		let fields = [];
+		const keys = DIM_KEYS[target] || DIM_KEYS.Field;
 
-		if (target === "Field") {
-			fields = [
-				{ key: "field_width", label: "Width", ph: "200px / 50% / 20rem" },
-				{ key: "field_height", label: "Height", ph: "32px / 4rem" },
-			];
-		} else if (target === "Column") {
-			fields = [
-				{ key: "column_width", label: "Column Width", ph: "300px / 40%" },
-				{ key: "column_height", label: "Column Height", ph: "auto / 200px" },
-			];
-		} else if (target === "Section") {
-			fields = [
-				{ key: "section_width", label: "Section Width", ph: "100% / 800px" },
-				{ key: "section_height", label: "Section Height", ph: "auto / 400px" },
-			];
-		}
-
-		grid.innerHTML = fields
-			.map(
-				(f) => `
-<div class="fs-field-group">
-  <label>${f.label}</label>
-  <div class="input-group">
-    <input class="form-control form-control-sm" data-field="${f.key}"
-           placeholder="${f.ph}" value="${r[f.key] || ""}" />
-    <div class="input-group-append">
-      <span class="input-group-text" style="font-size:11px;color:#888">CSS</span>
+		host.innerHTML = `
+<div class="fs-resize-panel">
+  <div class="fs-resize-stage">
+    <div class="fs-resize-box">
+      <span class="fs-resize-box-label"></span>
+      <div class="fs-resize-handle" title="Drag to resize"></div>
     </div>
   </div>
-</div>`,
-			)
-			.join("");
+  <div class="fs-resize-sliders">
+    <label>Width</label>
+    <input type="range" class="fs-resize-w" min="40" max="${keys.wMax}" value="200" />
+    <div class="fs-resize-value fs-resize-w-val">200px</div>
+    <label>Height</label>
+    <input type="range" class="fs-resize-h" min="24" max="${keys.hMax}" value="40" />
+    <div class="fs-resize-value fs-resize-h-val">40px</div>
+    <label class="fs-resize-unit">Unit</label>
+    <select class="form-control form-control-sm fs-resize-unit-sel">
+      <option value="px">px</option>
+      <option value="%">%</option>
+    </select>
+    <p class="text-muted small" style="margin-top:10px">Values save as CSS (e.g. 320px, 50%).</p>
+  </div>
+</div>`;
 
-		// Re-bind
-		const self = this;
-		grid.querySelectorAll("[data-field]").forEach((el) => {
-			el.addEventListener("input", (e) => {
-				self.currentRule[el.dataset.field] = e.target.value;
-				self._updateCSSPreview();
-			});
-		});
+		this._bindResizePanel(host);
 	},
 
 	_updateCSSPreview() {

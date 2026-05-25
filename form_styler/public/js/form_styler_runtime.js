@@ -209,6 +209,108 @@
 		return styled;
 	}
 
+	function getFormRoot(frm) {
+		if (frm.$wrapper && frm.$wrapper.length) return frm.$wrapper;
+		if (frm.wrapper) return $(frm.wrapper);
+		return null;
+	}
+
+	function ruleMatchesLayout(rule, frm, layoutType, breakFieldname) {
+		rule = normalizeRule(rule);
+		if (!rule || !isRuleActive(rule) || !breakFieldname) return false;
+		const target = rule.target_element || "Field";
+		if (layoutType === "section" && target !== "Section") return false;
+		if (layoutType === "column" && target !== "Column") return false;
+		if (rule.doctype_name && frm.doctype !== rule.doctype_name) return false;
+
+		const applyTo = rule.apply_to;
+		if (applyTo === "By Field Type") {
+			if (layoutType === "section" && rule.field_type === "Section Break") return true;
+			if (layoutType === "column" && rule.field_type === "Column Break") return true;
+			return false;
+		}
+		if (applyTo === "All Fields in DocType") return true;
+		if (applyTo === "Specific Field" && rule.fieldname) {
+			return rule.fieldname === breakFieldname;
+		}
+		if (applyTo === "Multiple Fields in DocType" && rule.fieldname) {
+			return rule.fieldname
+				.split(",")
+				.map((s) => s.trim())
+				.includes(breakFieldname);
+		}
+		return false;
+	}
+
+	function mergeLayoutStyles(rules, frm, layoutType, breakFieldname) {
+		const out = {};
+		for (const rule of sortedRules(rules)) {
+			if (!ruleMatchesLayout(rule, frm, layoutType, breakFieldname)) continue;
+			if (layoutType === "section") {
+				if (rule.section_width) out.width = rule.section_width;
+				if (rule.section_height) out.height = rule.section_height;
+			} else {
+				if (rule.column_width) out.width = rule.column_width;
+				if (rule.column_height) out.height = rule.column_height;
+			}
+		}
+		return out;
+	}
+
+	function clearLayoutStyles($el) {
+		$el.removeClass("fs-styled-layout").css({
+			width: "",
+			maxWidth: "",
+			minWidth: "",
+			minHeight: "",
+			flex: "",
+		});
+	}
+
+	function applyStylesToLayoutElement($el, styles) {
+		$el.addClass("fs-styled-layout");
+		if (styles.width) {
+			$el.css({
+				width: styles.width,
+				maxWidth: styles.width,
+				minWidth: styles.width,
+				flex: "0 0 " + styles.width,
+				boxSizing: "border-box",
+			});
+		}
+		if (styles.height) {
+			$el.css({ minHeight: styles.height });
+		}
+	}
+
+	function applyDirectLayoutStyles(frm, rules) {
+		const $root = getFormRoot(frm);
+		if (!$root || !$root.length) return 0;
+
+		let styled = 0;
+		$root.find(".form-section[data-fieldname]").each(function () {
+			const $el = $(this);
+			const fn = $el.attr("data-fieldname");
+			clearLayoutStyles($el);
+			const styles = mergeLayoutStyles(rules, frm, "section", fn);
+			if (!Object.keys(styles).length) return;
+			applyStylesToLayoutElement($el, styles);
+			styled++;
+		});
+
+		$root.find(".form-column[data-fieldname]").each(function () {
+			const $el = $(this);
+			const fn = $el.attr("data-fieldname");
+			clearLayoutStyles($el);
+			const styles = mergeLayoutStyles(rules, frm, "column", fn);
+			if (!Object.keys(styles).length) return;
+			applyStylesToLayoutElement($el, styles);
+			styled++;
+		});
+
+		return styled;
+	}
+
 	function debugNoMatches(frm, rules) {
 		const fields = iterFormFields(frm);
 		console.warn("FormStyler: rules loaded but no fields styled", {
@@ -334,15 +436,19 @@
 
 		fetchRules(function (rules) {
 			tagCurrentForm(frm);
-			const styled = applyDirectFieldStyles(frm, rules);
+			const fieldStyled = applyDirectFieldStyles(frm, rules);
+			const layoutStyled = applyDirectLayoutStyles(frm, rules);
+			const styled = fieldStyled + layoutStyled;
 			injectLayoutCSS(rules);
 
 			console.info(
 				"FormStyler [" + (attempt || 1) + "]:",
 				rules.length,
 				"rule(s),",
-				styled,
-				"field(s) styled on",
+				fieldStyled,
+				"field(s) +",
+				layoutStyled,
+				"layout(s) on",
 				frm.doctype
 			);
 
@@ -382,6 +488,7 @@
 			if (cur_frm) {
 				setTimeout(function () {
 					applyDirectFieldStyles(cur_frm, cachedRules);
+					applyDirectLayoutStyles(cur_frm, cachedRules);
 				}, 50);
 			}
 		});
@@ -427,9 +534,15 @@
 			fetchRules(function (rules) {
 				if (cur_frm) {
 					tagCurrentForm(cur_frm);
-					const styled = applyDirectFieldStyles(cur_frm, rules);
+					const fieldStyled = applyDirectFieldStyles(cur_frm, rules);
+					const layoutStyled = applyDirectLayoutStyles(cur_frm, rules);
 					injectLayoutCSS(rules);
-					resolve({ rules: rules, styled: styled });
+					resolve({
+						rules: rules,
+						styled: fieldStyled + layoutStyled,
+						fieldStyled: fieldStyled,
+						layoutStyled: layoutStyled,
+					});
 				} else {
 					injectLayoutCSS(rules);
 					resolve({ rules: rules, styled: 0 });
