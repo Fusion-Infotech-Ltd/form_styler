@@ -2,24 +2,54 @@ import frappe
 import json
 
 
+CACHE_KEY = "form_styler_rules_cache"
+
+
+def _get_cache():
+    """Return a usable cache handle across Frappe versions.
+
+    In Frappe v15+ ``frappe.cache`` is a LocalProxy attribute, but older
+    code used ``frappe.cache()``. Support both without relying on the
+    callable shim, which was removed/unstable in v16.
+    """
+    c = getattr(frappe, "cache", None)
+    if callable(c):
+        try:
+            c = c()
+        except Exception:
+            c = None
+    return c
+
+
 def add_style_rules_to_boot(bootinfo):
+    """Inject active Field Style Rules into ``bootinfo`` during boot_session.
+
+    Failures here must not block boot, but we DO log them so silent
+    breakage doesn't go unnoticed.
     """
-    Called during boot_session. Injects all active Field Style Rules
-    into bootinfo so the client JS can generate and inject CSS
-    without an extra API call.
-    """
+    bootinfo.form_style_rules = []
     try:
-        cache_key = "form_styler_rules_cache"
-        cached = frappe.cache().get_value(cache_key)
+        cache = _get_cache()
+        cached = None
+        if cache is not None:
+            try:
+                cached = cache.get_value(CACHE_KEY)
+            except Exception:
+                cached = None
 
         if cached:
-            rules = json.loads(cached)
+            rules = json.loads(cached) if isinstance(cached, (str, bytes)) else cached
         else:
             rules = _fetch_rules()
-            frappe.cache().set_value(cache_key, json.dumps(rules), expires_in_sec=3600)
+            if cache is not None:
+                try:
+                    cache.set_value(CACHE_KEY, json.dumps(rules))
+                except Exception:
+                    pass
 
-        bootinfo.form_style_rules = rules
+        bootinfo.form_style_rules = rules or []
     except Exception:
+        frappe.log_error(frappe.get_traceback(), "form_styler: add_style_rules_to_boot failed")
         bootinfo.form_style_rules = []
 
 
@@ -61,9 +91,15 @@ def _fetch_rules():
     return [r for r in rules]
 
 
-def clear_style_cache(doc, method=None):
+def clear_style_cache(doc=None, method=None):
     """Clears cached style rules so next boot picks up fresh data."""
-    frappe.cache().delete_value("form_styler_rules_cache")
+    cache = _get_cache()
+    if cache is None:
+        return
+    try:
+        cache.delete_value(CACHE_KEY)
+    except Exception:
+        pass
 
 
 @frappe.whitelist()
@@ -119,7 +155,7 @@ def delete_style_rule(name):
     """Delete a Field Style Rule."""
     frappe.delete_doc("Field Style Rule", name, ignore_permissions=True)
     frappe.db.commit()
-    frappe.cache().delete_value("form_styler_rules_cache")
+    clear_style_cache()
     return {"status": "ok"}
 
 
@@ -128,5 +164,5 @@ def toggle_rule(name, is_active):
     """Toggle active state of a rule."""
     frappe.db.set_value("Field Style Rule", name, "is_active", int(is_active))
     frappe.db.commit()
-    frappe.cache().delete_value("form_styler_rules_cache")
+    clear_style_cache()
     return {"status": "ok"}

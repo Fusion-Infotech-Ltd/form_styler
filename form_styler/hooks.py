@@ -25,8 +25,8 @@ app_license = "mit"
 # ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/form_styler/css/form_styler.css"
-# app_include_js = "/assets/form_styler/js/form_styler.js"
+app_include_css = "/assets/form_styler/css/form_styler_ui.css"
+app_include_js = "/assets/form_styler/js/form_styler_runtime.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/form_styler/css/form_styler.css"
@@ -145,6 +145,12 @@ app_license = "mit"
 # 		"on_trash": "method"
 # 	}
 # }
+
+# Boot Session
+# ------------
+# Inject active Field Style Rules into frappe.boot so client-side runtime
+# can generate and apply CSS immediately on page load.
+boot_session = "form_styler.utils.add_style_rules_to_boot"
 
 # Scheduled Tasks
 # ---------------

@@ -132,17 +132,28 @@
 
     /**
      * Build an array of CSS selectors from a rule.
-     * Handles all apply_to modes and target elements.
+     *
+     * In Frappe v16, field wrappers carry the class `form-group` (not the
+     * legacy `frappe-control`). To support both v15 and v16 — and avoid
+     * matching unrelated `.form-group` elements outside forms — we emit
+     * BOTH selectors for every field-level rule.
      */
+    function fieldWrapperSelectors(attr) {
+        // attr = e.g. `[data-fieldname="customer"]`
+        return [
+            `.frappe-control${attr}`,   // legacy
+            `.form-group${attr}`,        // Frappe v16
+        ];
+    }
+
     function buildSelectors(rule) {
         const applyTo = rule.apply_to;
         const target = rule.target_element || "Field";
         const selectors = [];
 
         if (target === "Column") {
-            // Column selectors are positional; we scope by doctype if given
             if (rule.doctype_name) {
-                selectors.push(`[data-page-route*="${escapeCSSAttr(rule.doctype_name)}"] .form-column`);
+                selectors.push(`.fs-doctype-${slugify(rule.doctype_name)} .form-column`);
             } else {
                 selectors.push(".form-column");
             }
@@ -151,7 +162,7 @@
 
         if (target === "Section") {
             if (rule.doctype_name) {
-                selectors.push(`[data-page-route*="${escapeCSSAttr(rule.doctype_name)}"] .form-section`);
+                selectors.push(`.fs-doctype-${slugify(rule.doctype_name)} .form-section`);
             } else {
                 selectors.push(".form-section");
             }
@@ -159,34 +170,44 @@
         }
 
         // target === "Field" (default)
+        const push = (attr, scope) => {
+            fieldWrapperSelectors(attr).forEach(sel => {
+                selectors.push(scope ? `${scope} ${sel}` : sel);
+            });
+        };
+
         if (applyTo === "By Field Type" && rule.field_type) {
-            selectors.push(`.frappe-control[data-fieldtype="${escapeCSSAttr(rule.field_type)}"]`);
+            const attr = `[data-fieldtype="${escapeCSSAttr(rule.field_type)}"]`;
+            if (rule.doctype_name) {
+                push(attr, `.fs-doctype-${slugify(rule.doctype_name)}`);
+            } else {
+                push(attr);
+            }
 
         } else if (applyTo === "Specific Field" && rule.fieldname) {
             const fn = rule.fieldname.trim();
+            const attr = `[data-fieldname="${escapeCSSAttr(fn)}"]`;
             if (rule.doctype_name) {
-                selectors.push(
-                    `.layout-main-section[data-route*="${escapeCSSAttr(rule.doctype_name)}"] ` +
-                    `.frappe-control[data-fieldname="${escapeCSSAttr(fn)}"]`
-                );
-                // Fallback without doctype scoping (relies on JS injection instead)
-                selectors.push(`.fs-doctype-${slugify(rule.doctype_name)} .frappe-control[data-fieldname="${escapeCSSAttr(fn)}"]`);
+                push(attr, `.fs-doctype-${slugify(rule.doctype_name)}`);
             } else {
-                selectors.push(`.frappe-control[data-fieldname="${escapeCSSAttr(fn)}"]`);
+                push(attr);
             }
 
         } else if (applyTo === "Multiple Fields in DocType" && rule.fieldname) {
             const names = rule.fieldname.split(",").map(s => s.trim()).filter(Boolean);
             names.forEach(function (fn) {
+                const attr = `[data-fieldname="${escapeCSSAttr(fn)}"]`;
                 if (rule.doctype_name) {
-                    selectors.push(`.fs-doctype-${slugify(rule.doctype_name)} .frappe-control[data-fieldname="${escapeCSSAttr(fn)}"]`);
+                    push(attr, `.fs-doctype-${slugify(rule.doctype_name)}`);
                 } else {
-                    selectors.push(`.frappe-control[data-fieldname="${escapeCSSAttr(fn)}"]`);
+                    push(attr);
                 }
             });
 
         } else if (applyTo === "All Fields in DocType" && rule.doctype_name) {
-            selectors.push(`.fs-doctype-${slugify(rule.doctype_name)} .frappe-control`);
+            const scope = `.fs-doctype-${slugify(rule.doctype_name)}`;
+            selectors.push(`${scope} .frappe-control`);
+            selectors.push(`${scope} .form-group[data-fieldname]`);
         }
 
         return selectors;
@@ -235,24 +256,60 @@
 
     // ── Entry Point ───────────────────────────────────────────────────────────
 
+    function hookFormRefresh() {
+        // frappe.ui.form.on("*", ...) is NOT supported by Frappe — there is
+        // no wildcard doctype binding. Instead, patch Form.prototype.refresh
+        // so every form refresh re-tags its wrapper with .fs-doctype-{slug}.
+        try {
+            if (
+                window.frappe &&
+                frappe.ui &&
+                frappe.ui.form &&
+                frappe.ui.form.Form &&
+                frappe.ui.form.Form.prototype &&
+                !frappe.ui.form.Form.prototype.__fs_patched
+            ) {
+                const proto = frappe.ui.form.Form.prototype;
+                const orig = proto.refresh;
+                proto.refresh = function () {
+                    const ret = orig.apply(this, arguments);
+                    try { tagCurrentForm(this); } catch (e) { /* no-op */ }
+                    return ret;
+                };
+                proto.__fs_patched = true;
+            }
+        } catch (e) {
+            console.warn("FormStyler: could not patch Form.refresh", e);
+        }
+    }
+
     function init() {
         // Inject CSS from boot data immediately
         const rules = (frappe.boot && frappe.boot.form_style_rules) || [];
         injectGlobalCSS(rules);
 
-        // Re-tag forms on every refresh so doctype-scoped CSS applies
-        frappe.ui.form.on("*", {
-            refresh: function (frm) {
-                tagCurrentForm(frm);
-            },
-        });
+        // If boot was empty (e.g. boot_session failed), fetch via API.
+        if (!rules.length) {
+            reloadAndInject();
+        }
 
-        // Also handle page changes for good measure
+        // Re-tag forms on every refresh so doctype-scoped CSS applies
+        hookFormRefresh();
+
+        // Router-change fallback: covers initial navigation into a form
+        // before the prototype patch has been applied.
+        if (frappe.router && typeof frappe.router.on === "function") {
+            frappe.router.on("change", function () {
+                setTimeout(function () {
+                    if (window.cur_frm) tagCurrentForm(window.cur_frm);
+                }, 100);
+            });
+        }
+
+        // Also handle legacy page-change event
         $(document).on("page-change", function () {
-            // Small delay to let form DOM render
             setTimeout(function () {
-                const frm = cur_frm;
-                if (frm) tagCurrentForm(frm);
+                if (window.cur_frm) tagCurrentForm(window.cur_frm);
             }, 50);
         });
     }
@@ -276,10 +333,17 @@
         reloadAndInject: reloadAndInject,
     };
 
-    // Run on DOMContentLoaded or immediately if already ready
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", init);
-    } else {
+    // Wait until both DOM and the `frappe` global are ready before init.
+    function whenReady() {
+        if (typeof window.frappe === "undefined" || !frappe.boot) {
+            return setTimeout(whenReady, 50);
+        }
         init();
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", whenReady);
+    } else {
+        whenReady();
     }
 })();

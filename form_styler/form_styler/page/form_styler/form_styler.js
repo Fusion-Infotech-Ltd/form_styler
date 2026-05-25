@@ -80,7 +80,26 @@ const FormStylerApp = {
     },
 
     _buildLayout() {
-        const root = this.wrapper.querySelector("#fs-app-root");
+        // In Frappe v16 the page .html template is not always auto-injected
+        // into the wrapper, so we resolve a mount point and ensure the
+        // #fs-app-root container exists before writing to it.
+        let root = this.wrapper.querySelector("#fs-app-root");
+        if (!root) {
+            const mount =
+                (this.page && (this.page.body || this.page.main)) ||
+                this.wrapper.querySelector(".layout-main-section") ||
+                this.wrapper.querySelector(".page-body") ||
+                this.wrapper;
+            root = document.createElement("div");
+            root.id = "fs-app-root";
+            // The .fs-page-wrapper class is used by some host CSS rules.
+            const pageWrap = document.createElement("div");
+            pageWrap.className = "fs-page-wrapper";
+            pageWrap.appendChild(root);
+            // mount may be a jQuery object from Frappe — normalize to DOM.
+            const mountEl = mount && mount.jquery ? mount[0] : mount;
+            mountEl.appendChild(pageWrap);
+        }
         root.innerHTML = `
 <div class="fs-layout">
   <!-- LEFT: Rule List -->

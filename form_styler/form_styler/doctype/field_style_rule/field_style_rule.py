@@ -56,7 +56,8 @@ class FieldStyleRule(Document):
         self._clear_cache()
 
     def _clear_cache(self):
-        frappe.cache().delete_value("form_styler_rules_cache")
+        from form_styler.utils import clear_style_cache
+        clear_style_cache()
 
 
 def get_permission_query_conditions(user):
