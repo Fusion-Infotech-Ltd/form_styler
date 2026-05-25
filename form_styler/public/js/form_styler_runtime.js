@@ -1,349 +1,488 @@
-// ── Form Styler Runtime ───────────────────────────────────────────────────────
-// Loaded on every Frappe desk page via app_include_js.
-// Reads boot.form_style_rules and injects generated CSS into <head>.
-// Also re-injects on form navigation so doctype-specific rules apply correctly.
+// Form Styler Runtime
+// Dataflow: DB rules → API → match each frm field → inline styles on controls
+// (CSS injection kept only for column/section + hover)
 
 (function () {
-    "use strict";
+	"use strict";
 
-    // ── CSS Builder ───────────────────────────────────────────────────────────
+	const SKIP_FIELDTYPES = new Set([
+		"Section Break",
+		"Column Break",
+		"Tab Break",
+		"HTML",
+	]);
 
-    /**
-     * Build CSS for a single rule object.
-     * Supports:
-     *   - Field width/height
-     *   - Column width/height
-     *   - Section width/height
-     *   - Label color, field text color, field bg color
-     *   - Hover effects: Highlight, Lift, Glow
-     */
-    function buildRuleCSS(rule) {
-        if (!rule) return "";
+	let cachedRules = [];
 
-        const selectors = buildSelectors(rule);
-        if (!selectors.length) return "";
+	// ── Rule helpers ─────────────────────────────────────────────────────────
 
-        let css = "";
+	function normalizeRule(rule) {
+		if (!rule) return null;
+		const r = Object.assign({}, rule);
+		["apply_to", "field_type", "target_element", "fieldname", "doctype_name"].forEach(
+			(k) => {
+				if (r[k] && typeof r[k] === "string") r[k] = r[k].trim();
+			}
+		);
+		return r;
+	}
 
-        selectors.forEach(function (sel) {
-            const target = rule.target_element || "Field";
-            let block = "";
+	function isRuleActive(rule) {
+		if (!rule) return false;
+		// API already filters is_active=1; older responses omitted the column.
+		if (rule.is_active === undefined || rule.is_active === null) return true;
+		return (
+			rule.is_active === 1 ||
+			rule.is_active === true ||
+			rule.is_active === "1"
+		);
+	}
 
-            // ── Dimensions ──────────────────────────────────────────────────
-            if (target === "Field") {
-                if (rule.field_width) {
-                    block += `\n  width: ${rule.field_width} !important;`;
-                    block += `\n  max-width: ${rule.field_width} !important;`;
-                    block += `\n  min-width: ${rule.field_width} !important;`;
-                    block += `\n  flex: 0 0 ${rule.field_width} !important;`;
-                }
-                if (rule.field_height) {
-                    block += `\n  --fs-field-height: ${rule.field_height};`;
-                }
-                if (block) css += `${sel} {${block}\n}\n`;
+	function hasFieldWrapper(field) {
+		if (!field) return false;
+		if (field.$wrapper && field.$wrapper.length) return true;
+		if (field.wrapper) return true;
+		return false;
+	}
 
-                // Height on actual inputs
-                if (rule.field_height) {
-                    css += `${sel} .form-control,\n`;
-                    css += `${sel} .like-disabled-input,\n`;
-                    css += `${sel} .frappe-control > div:first-child {`;
-                    css += `\n  height: ${rule.field_height} !important;`;
-                    css += `\n  min-height: ${rule.field_height} !important;`;
-                    css += `\n}\n`;
-                }
-            } else if (target === "Column") {
-                if (rule.column_width || rule.column_height) {
-                    block += rule.column_width ? `\n  width: ${rule.column_width} !important;\n  flex: 0 0 ${rule.column_width} !important;` : "";
-                    block += rule.column_height ? `\n  min-height: ${rule.column_height} !important;` : "";
-                    // Column selector override
-                    css += `${sel} {${block}\n}\n`;
-                }
-            } else if (target === "Section") {
-                if (rule.section_width || rule.section_height) {
-                    block += rule.section_width ? `\n  width: ${rule.section_width} !important;` : "";
-                    block += rule.section_height ? `\n  min-height: ${rule.section_height} !important;` : "";
-                    css += `${sel} {${block}\n}\n`;
-                }
-            }
+	function iterFormFields(frm) {
+		const seen = new Set();
+		const list = [];
 
-            // ── Label color ─────────────────────────────────────────────────
-            if (rule.label_color) {
-                css += `${sel} label.control-label,\n`;
-                css += `${sel} .control-label {\n`;
-                css += `  color: ${rule.label_color} !important;\n}\n`;
-            }
+		function add(field) {
+			if (!field || !field.df || !field.df.fieldname) return;
+			if (seen.has(field.df.fieldname)) return;
+			seen.add(field.df.fieldname);
+			list.push(field);
+		}
 
-            // ── Field text color ────────────────────────────────────────────
-            if (rule.field_text_color) {
-                css += `${sel} .form-control,\n`;
-                css += `${sel} .like-disabled-input {\n`;
-                css += `  color: ${rule.field_text_color} !important;\n}\n`;
-            }
+		if (frm.fields && frm.fields.length) {
+			frm.fields.forEach(add);
+		}
+		if (frm.fields_dict) {
+			Object.keys(frm.fields_dict).forEach((k) => add(frm.fields_dict[k]));
+		}
+		return list;
+	}
 
-            // ── Field background ────────────────────────────────────────────
-            if (rule.field_bg_color) {
-                css += `${sel} .form-control,\n`;
-                css += `${sel} .like-disabled-input {\n`;
-                css += `  background-color: ${rule.field_bg_color} !important;\n}\n`;
-            }
+	function ruleMatchesField(rule, frm, field) {
+		rule = normalizeRule(rule);
+		if (!rule || !isRuleActive(rule) || !field || !field.df) return false;
+		if ((rule.target_element || "Field") !== "Field") return false;
 
-            // ── Hover effects ───────────────────────────────────────────────
-            if (rule.hover_effect) {
-                css += buildHoverCSS(sel, rule);
-            }
-        });
+		const df = field.df;
+		const applyTo = rule.apply_to;
 
-        return css;
-    }
+		if (applyTo === "By Field Type" && rule.field_type) {
+			return df.fieldtype === rule.field_type;
+		}
+		if (applyTo === "Specific Field" && rule.fieldname) {
+			if (rule.doctype_name && frm.doctype !== rule.doctype_name) return false;
+			return df.fieldname === rule.fieldname;
+		}
+		if (applyTo === "Multiple Fields in DocType" && rule.fieldname) {
+			if (rule.doctype_name && frm.doctype !== rule.doctype_name) return false;
+			const names = rule.fieldname.split(",").map((s) => s.trim());
+			return names.includes(df.fieldname);
+		}
+		if (applyTo === "All Fields in DocType" && rule.doctype_name) {
+			return frm.doctype === rule.doctype_name;
+		}
+		return false;
+	}
 
-    /**
-     * Build hover CSS for a given selector and rule.
-     */
-    function buildHoverCSS(sel, rule) {
-        const effect = rule.hover_effect;
-        const transBase = "transition: all 0.22s ease;";
-        let css = "";
+	function sortedRules(rules) {
+		return (rules || [])
+			.filter(isRuleActive)
+			.map(normalizeRule)
+			.sort((a, b) => (a.priority || 10) - (b.priority || 10));
+	}
 
-        // Base transition so it's always smooth
-        css += `${sel} .form-control,\n`;
-        css += `${sel} .like-disabled-input {\n  ${transBase}\n}\n`;
+	function mergeFieldStyles(rules, frm, field) {
+		const out = {};
+		for (const rule of sortedRules(rules)) {
+			if (!ruleMatchesField(rule, frm, field)) continue;
+			if (rule.field_width) out.width = rule.field_width;
+			if (rule.field_height) out.height = rule.field_height;
+			if (rule.label_color) out.labelColor = rule.label_color;
+			if (rule.field_text_color) out.textColor = rule.field_text_color;
+			if (rule.field_bg_color) out.bgColor = rule.field_bg_color;
+			if (rule.hover_effect) {
+				out.hoverEffect = rule.hover_effect;
+				out.hoverBgColor = rule.hover_bg_color;
+			}
+		}
+		return out;
+	}
 
-        if (effect === "Highlight") {
-            const bg = rule.hover_bg_color || "#e8f4ff";
-            css += `${sel}:hover .form-control,\n`;
-            css += `${sel}:hover .like-disabled-input {\n`;
-            css += `  background-color: ${bg} !important;\n}\n`;
+	// ── Direct DOM styling (primary path) ────────────────────────────────────
 
-        } else if (effect === "Lift") {
-            css += `${sel}:hover .form-control,\n`;
-            css += `${sel}:hover .like-disabled-input {\n`;
-            css += `  box-shadow: 0 4px 14px rgba(0,0,0,0.13) !important;\n`;
-            css += `  transform: translateY(-1px);\n}\n`;
+	function applyStylesToFieldControl(field, styles) {
+		const $w = field.$wrapper;
+		if (!$w || !$w.length) return;
 
-        } else if (effect === "Glow") {
-            css += `${sel}:hover .form-control,\n`;
-            css += `${sel}:hover .like-disabled-input {\n`;
-            css += `  border-color: var(--primary) !important;\n`;
-            css += `  box-shadow: 0 0 0 3px rgba(100,130,255,0.22) !important;\n}\n`;
-        }
+		$w.addClass("fs-styled");
 
-        return css;
-    }
+		if (styles.width) {
+			const w = styles.width;
+			$w.css({ maxWidth: w });
+			const $inputWrap = field.$input_wrapper || $w.find(".control-input-wrapper").first();
+			if ($inputWrap.length) {
+				$inputWrap.css({
+					width: w,
+					maxWidth: w,
+					minWidth: w,
+					flex: "0 0 " + w,
+					boxSizing: "border-box",
+				});
+			}
+			$w.find(".form-control, .like-disabled-input, .control-value").css({
+				width: "100%",
+				maxWidth: "100%",
+				boxSizing: "border-box",
+			});
+		}
 
-    /**
-     * Build an array of CSS selectors from a rule.
-     *
-     * In Frappe v16, field wrappers carry the class `form-group` (not the
-     * legacy `frappe-control`). To support both v15 and v16 — and avoid
-     * matching unrelated `.form-group` elements outside forms — we emit
-     * BOTH selectors for every field-level rule.
-     */
-    function fieldWrapperSelectors(attr) {
-        // attr = e.g. `[data-fieldname="customer"]`
-        return [
-            `.frappe-control${attr}`,   // legacy
-            `.form-group${attr}`,        // Frappe v16
-        ];
-    }
+		if (styles.height) {
+			const h = styles.height;
+			$w.find(".form-control, .like-disabled-input").css({
+				height: h,
+				minHeight: h,
+			});
+		}
 
-    function buildSelectors(rule) {
-        const applyTo = rule.apply_to;
-        const target = rule.target_element || "Field";
-        const selectors = [];
+		if (styles.labelColor) {
+			$w.find(".control-label").css("color", styles.labelColor);
+		}
+		if (styles.textColor) {
+			$w.find(".form-control, .like-disabled-input, .control-value").css(
+				"color",
+				styles.textColor
+			);
+		}
+		if (styles.bgColor) {
+			$w.find(".form-control, .like-disabled-input").css(
+				"background-color",
+				styles.bgColor
+			);
+		}
 
-        if (target === "Column") {
-            if (rule.doctype_name) {
-                selectors.push(`.fs-doctype-${slugify(rule.doctype_name)} .form-column`);
-            } else {
-                selectors.push(".form-column");
-            }
-            return selectors;
-        }
+		if (styles.hoverEffect) {
+			$w.attr("data-fs-hover", styles.hoverEffect);
+			if (styles.hoverBgColor) {
+				$w.attr("data-fs-hover-bg", styles.hoverBgColor);
+			}
+		}
+	}
 
-        if (target === "Section") {
-            if (rule.doctype_name) {
-                selectors.push(`.fs-doctype-${slugify(rule.doctype_name)} .form-section`);
-            } else {
-                selectors.push(".form-section");
-            }
-            return selectors;
-        }
+	function clearFieldStyles(field) {
+		const $w = field.$wrapper;
+		if (!$w || !$w.length) return;
+		$w.removeClass("fs-styled").removeAttr("data-fs-hover data-fs-hover-bg");
+		$w.css({ maxWidth: "" });
+		const $inputWrap = field.$input_wrapper || $w.find(".control-input-wrapper").first();
+		$inputWrap.css({ width: "", maxWidth: "", minWidth: "", flex: "" });
+		$w.find(".form-control, .like-disabled-input, .control-value, .control-label").attr(
+			"style",
+			""
+		);
+	}
 
-        // target === "Field" (default)
-        const push = (attr, scope) => {
-            fieldWrapperSelectors(attr).forEach(sel => {
-                selectors.push(scope ? `${scope} ${sel}` : sel);
-            });
-        };
+	function applyDirectFieldStyles(frm, rules) {
+		if (!frm) return 0;
 
-        if (applyTo === "By Field Type" && rule.field_type) {
-            const attr = `[data-fieldtype="${escapeCSSAttr(rule.field_type)}"]`;
-            if (rule.doctype_name) {
-                push(attr, `.fs-doctype-${slugify(rule.doctype_name)}`);
-            } else {
-                push(attr);
-            }
+		const fields = iterFormFields(frm);
+		let styled = 0;
 
-        } else if (applyTo === "Specific Field" && rule.fieldname) {
-            const fn = rule.fieldname.trim();
-            const attr = `[data-fieldname="${escapeCSSAttr(fn)}"]`;
-            if (rule.doctype_name) {
-                push(attr, `.fs-doctype-${slugify(rule.doctype_name)}`);
-            } else {
-                push(attr);
-            }
+		for (const field of fields) {
+			if (SKIP_FIELDTYPES.has(field.df.fieldtype)) continue;
+			if (field.df.fieldname.startsWith("__")) continue;
+			if (!hasFieldWrapper(field)) continue;
 
-        } else if (applyTo === "Multiple Fields in DocType" && rule.fieldname) {
-            const names = rule.fieldname.split(",").map(s => s.trim()).filter(Boolean);
-            names.forEach(function (fn) {
-                const attr = `[data-fieldname="${escapeCSSAttr(fn)}"]`;
-                if (rule.doctype_name) {
-                    push(attr, `.fs-doctype-${slugify(rule.doctype_name)}`);
-                } else {
-                    push(attr);
-                }
-            });
+			clearFieldStyles(field);
+			const styles = mergeFieldStyles(rules, frm, field);
+			if (!Object.keys(styles).length) continue;
 
-        } else if (applyTo === "All Fields in DocType" && rule.doctype_name) {
-            const scope = `.fs-doctype-${slugify(rule.doctype_name)}`;
-            selectors.push(`${scope} .frappe-control`);
-            selectors.push(`${scope} .form-group[data-fieldname]`);
-        }
+			applyStylesToFieldControl(field, styles);
+			styled++;
+		}
+		return styled;
+	}
 
-        return selectors;
-    }
+	function debugNoMatches(frm, rules) {
+		const fields = iterFormFields(frm);
+		console.warn("FormStyler: rules loaded but no fields styled", {
+			rules: rules,
+			form: frm.doctype,
+			fieldCount: fields.length,
+			sample: fields.slice(0, 12).map((f) => ({
+				fieldname: f.df.fieldname,
+				fieldtype: f.df.fieldtype,
+				hasWrapper: hasFieldWrapper(f),
+			})),
+		});
+	}
 
-    function escapeCSSAttr(str) {
-        return (str || "").replace(/["\\]/g, "\\$&");
-    }
+	// ── CSS for column/section + hover (secondary) ─────────────────────────────
 
-    function slugify(str) {
-        return (str || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    }
+	function escapeCSSAttr(str) {
+		return (str || "").replace(/["\\]/g, "\\$&");
+	}
 
-    // ── CSS Injection ─────────────────────────────────────────────────────────
+	function slugify(str) {
+		return (str || "")
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-|-$/g, "");
+	}
 
-    function injectGlobalCSS(rules) {
-        let css = "/* Form Styler — Generated CSS */\n";
-        (rules || []).forEach(function (rule) {
-            css += buildRuleCSS(rule) + "\n";
-        });
+	function buildLayoutCSS(rules) {
+		let css = "";
+		for (const rule of sortedRules(rules)) {
+			const target = rule.target_element || "Field";
+			if (target === "Column" && (rule.column_width || rule.column_height)) {
+				const scope = rule.doctype_name
+					? `.fs-doctype-${slugify(rule.doctype_name)} `
+					: "";
+				css += `${scope}.form-column {`;
+				if (rule.column_width) {
+					css += `width:${rule.column_width}!important;flex:0 0 ${rule.column_width}!important;`;
+				}
+				if (rule.column_height) {
+					css += `min-height:${rule.column_height}!important;`;
+				}
+				css += "}\n";
+			}
+			if (target === "Section" && (rule.section_width || rule.section_height)) {
+				const scope = rule.doctype_name
+					? `.fs-doctype-${slugify(rule.doctype_name)} `
+					: "";
+				css += `${scope}.form-section {`;
+				if (rule.section_width) css += `width:${rule.section_width}!important;`;
+				if (rule.section_height) css += `min-height:${rule.section_height}!important;`;
+				css += "}\n";
+			}
+		}
+		// Hover on directly styled fields
+		css += `
+.fs-styled[data-fs-hover="Highlight"] .form-control:hover,
+.fs-styled[data-fs-hover="Highlight"] .like-disabled-input:hover {
+  transition: background 0.2s ease;
+}
+.fs-styled[data-fs-hover="Highlight"] .form-control:hover,
+.fs-styled[data-fs-hover="Highlight"] .like-disabled-input:hover {
+  background-color: #e8f4ff !important;
+}
+.fs-styled[data-fs-hover="Lift"] .form-control:hover,
+.fs-styled[data-fs-hover="Lift"] .like-disabled-input:hover {
+  box-shadow: 0 4px 14px rgba(0,0,0,0.13) !important;
+  transform: translateY(-1px);
+}
+.fs-styled[data-fs-hover="Glow"] .form-control:hover,
+.fs-styled[data-fs-hover="Glow"] .like-disabled-input:hover {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(100,130,255,0.22) !important;
+}
+`;
+		return css;
+	}
 
-        let tag = document.getElementById("form-styler-global-css");
-        if (!tag) {
-            tag = document.createElement("style");
-            tag.id = "form-styler-global-css";
-            document.head.appendChild(tag);
-        }
-        tag.textContent = css;
-    }
+	function injectLayoutCSS(rules) {
+		const css = "/* Form Styler layout/hover */\n" + buildLayoutCSS(rules);
+		let tag = document.getElementById("form-styler-global-css");
+		if (!tag) {
+			tag = document.createElement("style");
+			tag.id = "form-styler-global-css";
+			document.head.appendChild(tag);
+		}
+		tag.textContent = css;
+	}
 
-    /**
-     * Adds a .fs-doctype-{slug} class to the current form's layout
-     * so doctype-specific CSS selectors work reliably.
-     * Called on every form refresh.
-     */
-    function tagCurrentForm(frm) {
-        if (!frm || !frm.doctype) return;
-        const slug = slugify(frm.doctype);
-        const layout = frm.layout && frm.layout.wrapper && frm.layout.wrapper[0];
-        if (layout) {
-            // Remove old tags
-            layout.className = layout.className.replace(/\bfs-doctype-[\w-]+\b/g, "").trim();
-            layout.classList.add("fs-doctype-" + slug);
-        }
-    }
+	function tagCurrentForm(frm) {
+		if (!frm || !frm.doctype) return;
+		const slug = slugify(frm.doctype);
+		document.body.setAttribute("data-fs-doctype", slug);
 
-    // ── Entry Point ───────────────────────────────────────────────────────────
+		const layout = frm.layout && frm.layout.wrapper;
+		const el = layout && (layout.jquery ? layout[0] : layout);
+		if (el && el.classList) {
+			el.className = el.className.replace(/\bfs-doctype-[\w-]+\b/g, "").trim();
+			el.classList.add("fs-doctype-" + slug);
+		}
+	}
 
-    function hookFormRefresh() {
-        // frappe.ui.form.on("*", ...) is NOT supported by Frappe — there is
-        // no wildcard doctype binding. Instead, patch Form.prototype.refresh
-        // so every form refresh re-tags its wrapper with .fs-doctype-{slug}.
-        try {
-            if (
-                window.frappe &&
-                frappe.ui &&
-                frappe.ui.form &&
-                frappe.ui.form.Form &&
-                frappe.ui.form.Form.prototype &&
-                !frappe.ui.form.Form.prototype.__fs_patched
-            ) {
-                const proto = frappe.ui.form.Form.prototype;
-                const orig = proto.refresh;
-                proto.refresh = function () {
-                    const ret = orig.apply(this, arguments);
-                    try { tagCurrentForm(this); } catch (e) { /* no-op */ }
-                    return ret;
-                };
-                proto.__fs_patched = true;
-            }
-        } catch (e) {
-            console.warn("FormStyler: could not patch Form.refresh", e);
-        }
-    }
+	// ── Main apply pipeline ────────────────────────────────────────────────────
 
-    function init() {
-        // Inject CSS from boot data immediately
-        const rules = (frappe.boot && frappe.boot.form_style_rules) || [];
-        injectGlobalCSS(rules);
+	function fetchRules(callback) {
+		frappe.call({
+			method: "form_styler.utils.get_style_rules",
+			callback: function (res) {
+				const rules = ((res && res.message) || []).filter(isRuleActive);
+				cachedRules = rules;
+				if (frappe.boot) frappe.boot.form_style_rules = rules;
+				callback(rules);
+			},
+			error: function (err) {
+				console.warn("FormStyler: get_style_rules failed", err);
+				callback(cachedRules || []);
+			},
+		});
+	}
 
-        // If boot was empty (e.g. boot_session failed), fetch via API.
-        if (!rules.length) {
-            reloadAndInject();
-        }
+	function applyToForm(frm, attempt) {
+		if (!frm) return;
 
-        // Re-tag forms on every refresh so doctype-scoped CSS applies
-        hookFormRefresh();
+		fetchRules(function (rules) {
+			tagCurrentForm(frm);
+			const styled = applyDirectFieldStyles(frm, rules);
+			injectLayoutCSS(rules);
 
-        // Router-change fallback: covers initial navigation into a form
-        // before the prototype patch has been applied.
-        if (frappe.router && typeof frappe.router.on === "function") {
-            frappe.router.on("change", function () {
-                setTimeout(function () {
-                    if (window.cur_frm) tagCurrentForm(window.cur_frm);
-                }, 100);
-            });
-        }
+			console.info(
+				"FormStyler [" + (attempt || 1) + "]:",
+				rules.length,
+				"rule(s),",
+				styled,
+				"field(s) styled on",
+				frm.doctype
+			);
 
-        // Also handle legacy page-change event
-        $(document).on("page-change", function () {
-            setTimeout(function () {
-                if (window.cur_frm) tagCurrentForm(window.cur_frm);
-            }, 50);
-        });
-    }
+			if (styled === 0 && rules.length > 0 && (attempt || 1) >= 3) {
+				debugNoMatches(frm, rules);
+			}
 
-    // ── Reload helper (called by Page UI after save) ──────────────────────────
-    async function reloadAndInject() {
-        try {
-            const res = await frappe.call({ method: "form_styler.utils.get_style_rules" });
-            injectGlobalCSS(res.message || []);
-            // Update boot for consistency
-            if (frappe.boot) frappe.boot.form_style_rules = res.message || [];
-        } catch (e) {
-            console.warn("FormStyler: could not reload rules", e);
-        }
-    }
+			if (styled === 0 && rules.length > 0 && (attempt || 1) < 4) {
+				setTimeout(function () {
+					applyToForm(frm, (attempt || 1) + 1);
+				}, 250 * (attempt || 1));
+			}
+		});
+	}
 
-    // ── Expose public API ─────────────────────────────────────────────────────
-    window.FormStyler = {
-        buildRuleCSS: buildRuleCSS,
-        injectGlobalCSS: injectGlobalCSS,
-        reloadAndInject: reloadAndInject,
-    };
+	function scheduleApply(frm) {
+		if (!frm) return;
+		applyToForm(frm, 1);
+	}
 
-    // Wait until both DOM and the `frappe` global are ready before init.
-    function whenReady() {
-        if (typeof window.frappe === "undefined" || !frappe.boot) {
-            return setTimeout(whenReady, 50);
-        }
-        init();
-    }
+	// ── Hooks ──────────────────────────────────────────────────────────────────
 
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", whenReady);
-    } else {
-        whenReady();
-    }
+	function init() {
+		frappe.ui.form.on("*", {
+			refresh: function (frm) {
+				scheduleApply(frm);
+			},
+		});
+
+		$(document).on("page-change", function () {
+			setTimeout(function () {
+				if (cur_frm) scheduleApply(cur_frm);
+			}, 100);
+		});
+
+		$(document).on("refresh-fields", function () {
+			if (cur_frm) {
+				setTimeout(function () {
+					applyDirectFieldStyles(cur_frm, cachedRules);
+				}, 50);
+			}
+		});
+	}
+
+	function countMatchingFields(frm, rules) {
+		if (!frm) return 0;
+		let n = 0;
+		for (const field of iterFormFields(frm)) {
+			if (SKIP_FIELDTYPES.has(field.df.fieldtype)) continue;
+			if (!hasFieldWrapper(field)) continue;
+			if (Object.keys(mergeFieldStyles(rules, frm, field)).length) n++;
+		}
+		return n;
+	}
+
+	// Preview merged styles for current rule (Form Styler / Field Style Rule UI)
+	function buildRuleCSS(rule) {
+		rule = normalizeRule(rule);
+		if (!rule || !isRuleActive(rule)) return "/* Rule is inactive or empty */";
+
+		const frm = cur_frm || { doctype: rule.doctype_name || "" };
+		const sample = {
+			df: {
+				fieldtype: rule.field_type || "Data",
+				fieldname: (rule.fieldname || "field_width").split(",")[0].trim(),
+			},
+		};
+		if (!ruleMatchesField(rule, frm, sample)) {
+			return (
+				"/* This rule does not match the sample field on the open form.\n" +
+				"   Check Apply To, DocType, Field Type, and Field Name. */"
+			);
+		}
+		return (
+			"/* Applied directly on each matching control (inline styles) */\n" +
+			JSON.stringify(mergeFieldStyles([rule], frm, sample), null, 2)
+		);
+	}
+
+	async function reloadAndInject() {
+		return new Promise(function (resolve) {
+			fetchRules(function (rules) {
+				if (cur_frm) {
+					tagCurrentForm(cur_frm);
+					const styled = applyDirectFieldStyles(cur_frm, rules);
+					injectLayoutCSS(rules);
+					resolve({ rules: rules, styled: styled });
+				} else {
+					injectLayoutCSS(rules);
+					resolve({ rules: rules, styled: 0 });
+				}
+			});
+		});
+	}
+
+	async function diagnose() {
+		const status = await frappe.call({
+			method: "form_styler.utils.get_style_rules_status",
+		});
+		return new Promise(function (resolve) {
+			fetchRules(function (rules) {
+				const frm = cur_frm;
+				const info = {
+					server: (status && status.message) || null,
+					rulesLoaded: rules.length,
+					rules: rules,
+					openForm: frm ? frm.doctype : null,
+					fieldsInForm: frm ? iterFormFields(frm).length : 0,
+					matchingFields: frm ? countMatchingFields(frm, rules) : 0,
+				};
+				console.table(
+					rules.map((r) => ({
+						name: r.rule_name,
+						apply_to: r.apply_to,
+						doctype: r.doctype_name,
+						field_type: r.field_type,
+						field: r.fieldname,
+						width: r.field_width,
+						height: r.field_height,
+						is_active: r.is_active,
+					}))
+				);
+				console.info("FormStyler diagnose:", info);
+				resolve(info);
+			});
+		});
+	}
+
+	window.FormStyler = {
+		applyToForm: scheduleApply,
+		reloadAndInject: reloadAndInject,
+		diagnose: diagnose,
+		buildRuleCSS: buildRuleCSS,
+		// legacy alias
+		injectGlobalCSS: injectLayoutCSS,
+	};
+
+	if (typeof frappe !== "undefined" && frappe.ready) {
+		frappe.ready(init);
+	} else {
+		init();
+	}
 })();

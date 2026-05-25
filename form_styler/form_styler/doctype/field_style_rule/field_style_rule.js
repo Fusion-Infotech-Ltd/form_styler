@@ -1,70 +1,85 @@
-// ── Field Style Rule Form Script ──────────────────────────────────────────────
+// Field Style Rule — form script
 frappe.ui.form.on("Field Style Rule", {
+	refresh(frm) {
+		frm.add_custom_button(__("Preview CSS"), () => {
+			const preview = window.FormStyler && FormStyler.buildRuleCSS(frm.doc);
+			frappe.msgprint({
+				title: __("Style preview (applied directly to fields)"),
+				message: `<pre style="font-size:12px;white-space:pre-wrap;">${frappe.utils.escape_html(
+					preview || ""
+				)}</pre>`,
+				wide: true,
+			});
+		});
 
-    refresh(frm) {
-        frm.add_custom_button(__("Preview CSS"), () => {
-            const css = window.FormStyler && window.FormStyler.buildRuleCSS(frm.doc);
-            if (!css || !css.trim()) {
-                frappe.msgprint(__("No CSS generated. Fill in at least one style property."));
-                return;
-            }
-            frappe.msgprint({
-                title: __("Generated CSS Preview"),
-                message: `<pre style="font-size:12px;white-space:pre-wrap;word-break:break-all;">${frappe.utils.escape_html(css)}</pre>`,
-                wide: true,
-            });
-        });
+		frm.add_custom_button(__("Open Form Styler Page"), () => {
+			frappe.set_route("form-styler");
+		}, __("Go To"));
 
-        frm.add_custom_button(__("Open Form Styler Page"), () => {
-            frappe.set_route("form-styler");
-        }, __("Go To"));
-    },
+		if (window.FormStyler) {
+			FormStyler.reloadAndInject();
+		}
+	},
 
-    apply_to(frm) {
-        // Clear irrelevant fields when scope changes
-        const scope = frm.doc.apply_to;
-        if (scope === "By Field Type") {
-            frm.set_value("doctype_name", "");
-            frm.set_value("fieldname", "");
-        } else if (scope === "All Fields in DocType") {
-            frm.set_value("field_type", "");
-            frm.set_value("fieldname", "");
-        }
-    },
+	after_save(frm) {
+		if (!window.FormStyler) return;
+		setTimeout(function () {
+			FormStyler.applyToForm(frm);
+			FormStyler.reloadAndInject().then(({ styled, rules }) => {
+				const msg =
+					styled > 0
+						? __("Styled {0} field(s) on this form", [styled])
+						: rules && rules.length
+							? __("Rule saved but 0 fields matched — set Field Width/Height and check Apply To")
+							: __("Rule saved but not active or not returned from server");
+				frappe.show_alert({ message: msg, indicator: styled ? "green" : "orange" });
+			});
+		}, 400);
+	},
 
-    doctype_name(frm) {
-        // When doctype changes, reset fieldname
-        frm.set_value("fieldname", "");
-        if (frm.doc.doctype_name && frm.doc.apply_to === "Specific Field") {
-            _load_fieldname_options(frm);
-        }
-    },
+	apply_to(frm) {
+		const scope = frm.doc.apply_to;
+		if (scope === "By Field Type") {
+			frm.set_value("doctype_name", "");
+			frm.set_value("fieldname", "");
+		} else if (scope === "All Fields in DocType") {
+			frm.set_value("field_type", "");
+			frm.set_value("fieldname", "");
+		}
+	},
+
+	doctype_name(frm) {
+		frm.set_value("fieldname", "");
+		if (frm.doc.doctype_name && frm.doc.apply_to === "Specific Field") {
+			_load_fieldname_options(frm);
+		}
+	},
 });
 
 async function _load_fieldname_options(frm) {
-    const res = await frappe.call({
-        method: "form_styler.utils.get_doctype_fields",
-        args: { doctype_name: frm.doc.doctype_name },
-    });
-    if (!res || !res.message) return;
-    const fields = res.message;
-    const opts = fields.map(f => `${f.fieldname} (${f.fieldtype})`).join("\n");
-    // Just show a helper dialog to pick
-    if (fields.length) {
-        const d = new frappe.ui.Dialog({
-            title: `Fields in ${frm.doc.doctype_name}`,
-            fields: [{
-                fieldname: "chosen_field",
-                fieldtype: "Select",
-                label: "Select Field",
-                options: fields.map(f => f.fieldname).join("\n"),
-            }],
-            primary_action_label: "Use This Field",
-            primary_action(vals) {
-                frm.set_value("fieldname", vals.chosen_field);
-                d.hide();
-            },
-        });
-        d.show();
-    }
+	const res = await frappe.call({
+		method: "form_styler.utils.get_doctype_fields",
+		args: { doctype_name: frm.doc.doctype_name },
+	});
+	if (!res || !res.message) return;
+	const fields = res.message;
+	if (!fields.length) return;
+
+	const d = new frappe.ui.Dialog({
+		title: `Fields in ${frm.doc.doctype_name}`,
+		fields: [
+			{
+				fieldname: "chosen_field",
+				fieldtype: "Select",
+				label: "Select Field",
+				options: fields.map((f) => f.fieldname).join("\n"),
+			},
+		],
+		primary_action_label: "Use This Field",
+		primary_action(vals) {
+			frm.set_value("fieldname", vals.chosen_field);
+			d.hide();
+		},
+	});
+	d.show();
 }

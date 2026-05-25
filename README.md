@@ -2,6 +2,8 @@
 
 Allows User to Change form Layout without Code
 
+**Setup and troubleshooting:** see [SETUP.md](SETUP.md)
+
 ### Installation
 
 You can install this app using the [bench](https://github.com/frappe/bench) CLI:
