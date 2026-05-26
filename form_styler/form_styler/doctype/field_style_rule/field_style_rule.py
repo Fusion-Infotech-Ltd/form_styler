@@ -1,3 +1,8 @@
+# Authors: Raisul Islam
+# Date: May 2026
+# Description: DocType definition and server-side logic for Field Style Rules in Form Styler app
+# License: MIT
+
 import frappe
 from frappe.model.document import Document
 

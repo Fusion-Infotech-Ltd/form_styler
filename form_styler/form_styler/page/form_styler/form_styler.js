@@ -869,12 +869,6 @@ const FormStylerApp = {
     <label>Height</label>
     <input type="range" class="fs-resize-h" min="24" max="${keys.hMax}" value="40" />
     <div class="fs-resize-value fs-resize-h-val">40px</div>
-    <label class="fs-resize-unit">Unit</label>
-    <select class="form-control form-control-sm fs-resize-unit-sel">
-      <option value="px">px</option>
-      <option value="%">%</option>
-    </select>
-    <p class="text-muted small" style="margin-top:10px">Values save as CSS (e.g. 320px, 50%).</p>
   </div>
 </div>`;
 

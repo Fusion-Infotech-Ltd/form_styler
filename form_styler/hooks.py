@@ -152,7 +152,7 @@ doctype_js = {
 # ------------
 # Inject active Field Style Rules into frappe.boot so client-side runtime
 # can generate and apply CSS immediately on page load.
-boot_session = "form_styler.utils.add_style_rules_to_boot"
+extend_bootinfo = "form_styler.utils.add_style_rules_to_boot"
 
 # Scheduled Tasks
 # ---------------

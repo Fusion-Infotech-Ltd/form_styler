@@ -1,3 +1,8 @@
+# Authors: Raisul Islam
+# Date: May 2026
+# Description: Utility functions and API endpoints for Form Styler app, including caching and style rule management.
+# License: MIT
+
 import frappe
 import json
 
@@ -115,19 +120,6 @@ def clear_style_cache(doc=None, method=None):
 def get_style_rules():
     """API endpoint: returns all active rules as JSON (used by Page UI)."""
     return _fetch_rules()
-
-
-@frappe.whitelist()
-def get_style_rules_status():
-    """Debug helper: confirms table + row counts (run in browser console)."""
-    exists = frappe.db.table_exists("Field Style Rule")
-    total = frappe.db.count("Field Style Rule") if exists else 0
-    active = len(_fetch_rules())
-    return {
-        "table_exists": exists,
-        "total_rules": total,
-        "active_rules_returned": active,
-    }
 
 
 LAYOUT_FIELDTYPES = frozenset({"Section Break", "Column Break", "Tab Break"})

@@ -1,6 +1,10 @@
+// Authors: Raisul Islam
+// Date: May 2026
+// Description: Client-side runtime for Form Styler app. Applies style rules to ERPNext forms based on user-defined criteria, using direct DOM manipulation and dynamic CSS injection.
+// License: MIT
+
 // Form Styler Runtime
-// Dataflow: DB rules → API → match each frm field → inline styles on controls
-// (CSS injection kept only for column/section + hover)
+
 
 (function () {
 	"use strict";
@@ -418,19 +422,16 @@
 	// ── Main apply pipeline ────────────────────────────────────────────────────
 
 	function fetchRules(callback) {
-		frappe.call({
-			method: "form_styler.utils.get_style_rules",
-			callback: function (res) {
-				const rules = ((res && res.message) || []).filter(isRuleActive);
-				cachedRules = rules;
-				if (frappe.boot) frappe.boot.form_style_rules = rules;
-				callback(rules);
-			},
-			error: function (err) {
-				console.warn("FormStyler: get_style_rules failed", err);
-				callback(cachedRules || []);
-			},
-		});
+			// 1. Read instantly from the browser's memory (Zero latency)
+			// Note: Ensure the variable name exactly matches what you set in python (form_styler_rules)
+			let rawRules = frappe.boot.form_style_rules || [];
+			
+			// 2. Filter active rules
+			const rules = rawRules.filter(isRuleActive);
+			
+			// 3. Cache and return
+			cachedRules = rules;
+			callback(rules);
 	}
 
 	function applyToForm(frm, attempt) {
@@ -442,17 +443,6 @@
 			const layoutStyled = applyDirectLayoutStyles(frm, rules);
 			const styled = fieldStyled + layoutStyled;
 			injectLayoutCSS(rules);
-
-			console.info(
-				"FormStyler [" + (attempt || 1) + "]:",
-				rules.length,
-				"rule(s),",
-				fieldStyled,
-				"field(s) +",
-				layoutStyled,
-				"layout(s) on",
-				frm.doctype
-			);
 
 			if (styled === 0 && rules.length > 0 && (attempt || 1) >= 3) {
 				debugNoMatches(frm, rules);
@@ -553,51 +543,48 @@
 		});
 	}
 
-	async function diagnose() {
-		const status = await frappe.call({
-			method: "form_styler.utils.get_style_rules_status",
-		});
-		return new Promise(function (resolve) {
-			fetchRules(function (rules) {
-				const frm = cur_frm;
-				const info = {
-					server: (status && status.message) || null,
-					rulesLoaded: rules.length,
-					rules: rules,
-					openForm: frm ? frm.doctype : null,
-					fieldsInForm: frm ? iterFormFields(frm).length : 0,
-					matchingFields: frm ? countMatchingFields(frm, rules) : 0,
-				};
-				console.table(
-					rules.map((r) => ({
-						name: r.rule_name,
-						apply_to: r.apply_to,
-						doctype: r.doctype_name,
-						field_type: r.field_type,
-						field: r.fieldname,
-						width: r.field_width,
-						height: r.field_height,
-						is_active: r.is_active,
-					}))
-				);
-				console.info("FormStyler diagnose:", info);
-				resolve(info);
-			});
-		});
-	}
+	function diagnose() {
+        // Read directly from the new bootinfo we set up
+        const rules = frappe.boot.form_styler_rules || [];
+        const frm = window.cur_frm; // Get the currently open ERPNext form
 
-	window.FormStyler = {
-		applyToForm: scheduleApply,
-		reloadAndInject: reloadAndInject,
-		diagnose: diagnose,
-		buildRuleCSS: buildRuleCSS,
-		// legacy alias
-		injectGlobalCSS: injectLayoutCSS,
-	};
+        const info = {
+            rulesLoaded: rules.length,
+            rules: rules,
+            openForm: frm ? frm.doctype : null,
+            // Assuming you have these helper functions defined elsewhere in your file
+            fieldsInForm: frm && typeof iterFormFields === "function" ? iterFormFields(frm).length : 0,
+            matchingFields: frm && typeof countMatchingFields === "function" ? countMatchingFields(frm, rules) : 0,
+        };
 
-	if (typeof frappe !== "undefined" && frappe.ready) {
-		frappe.ready(init);
-	} else {
-		init();
-	}
+        // Print a nice table to the browser console
+        console.table(
+            rules.map((r) => ({
+                name: r.name, 
+                target: r.target_element,
+                doctype: r.doctype_name,
+                fields: r.fields,
+                active: r.active !== undefined ? r.active : 1
+            }))
+        );
+        
+        console.info("FormStyler diagnose:", info);
+        return info;
+    }
+
+    // Expose APIs for your builder UI to interact with
+    window.FormStyler = {
+        applyToForm: scheduleApply,
+        reloadAndInject: reloadAndInject,
+        diagnose: diagnose,
+        buildRuleCSS: buildRuleCSS,
+        injectGlobalCSS: injectLayoutCSS,
+    };
+
+    // The Ignition Switch: Wait for Frappe to load, then initialize
+    if (typeof frappe !== "undefined" && frappe.ready) {
+        frappe.ready(init);
+    } else {
+        init();
+    }
 })();

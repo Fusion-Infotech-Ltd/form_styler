@@ -95,7 +95,7 @@
    "depends_on": "eval:in_list(['Specific Field','Multiple Fields in DocType'], doc.apply_to) || in_list(['Section','Column'], doc.target_element)",
    "description": "Section/Column break fieldname(s) from Customize Form, or input fieldnames (comma-separated).",
    "fieldname": "fieldname",
-   "fieldtype": "Data",
+   "fieldtype": "Text",
    "label": "Field Name(s)"
   },
   {
@@ -211,7 +211,7 @@
   }
  ],
  "links": [],
- "modified": "2026-05-25 20:19:16.574446",
+ "modified": "2026-05-27 03:10:00.683445",
  "modified_by": "Administrator",
  "module": "Form Styler",
  "name": "Field Style Rule",
