@@ -516,17 +516,14 @@ const FormStylerApp = {
 		if (!doctype) return [];
 		const cacheKey = `${doctype}::${target || "Field"}`;
 		if (this.doctypeFields[cacheKey]) {
-			console.log(`[Cache HIT] ${cacheKey}:`, this.doctypeFields[cacheKey].length, "fields");
 			return this.doctypeFields[cacheKey];
 		}
 		try {
-			console.log(`[Fetching] ${doctype} (target: ${target || "Field"})...`);
 			const res = await frappe.call({
 				method: "form_styler.utils.get_doctype_fields",
 				args: { doctype_name: doctype, target_element: target || "Field" },
 			});
 			const fields = res.message || [];
-			console.log(`[Fetched] ${cacheKey}: ${fields.length} fields`);
 			if (fields.length === 0) {
 				console.warn(`⚠ WARNING: Backend returned 0 fields for ${doctype}`);
 			}
@@ -591,7 +588,6 @@ const FormStylerApp = {
 		const r = this.currentRule;
 		const dt = r.doctype_name;
 		if (!dt) {
-			console.log("[getTargetOptions] No doctype selected");
 			return [];
 		}
 
@@ -600,24 +596,19 @@ const FormStylerApp = {
 		
 		// If not in cache, fetch it now
 		if (!this.doctypeFields[cacheKey]) {
-			console.log(`[getTargetOptions] Cache miss for ${cacheKey}, fetching...`);
 			this.setTargetLoading(true);
 			try {
 				await this.loadDoctypeFields(dt, r.target_element || "Field");
-				console.log(`[getTargetOptions] Fetch complete, cache now has data`);
 				this.setTargetLoading(false);
 			} catch (err) {
 				console.error(`[getTargetOptions] Error fetching for ${cacheKey}:`, err);
 				this.setTargetLoading(false);
 			}
-		} else {
-			console.log(`[getTargetOptions] Using cache for ${cacheKey}`);
-		}
+		} 
 
 		// Get cached data (now guaranteed to exist)
 		const fields = this.doctypeFields[cacheKey] || [];
-		console.log(`[getTargetOptions] Returning options: ${fields.length} total fields`);
-		
+				
 		const term = (txt || "").toLowerCase();
 		const filtered = fields.filter((f) => {
 			if (!term) return true;
@@ -640,7 +631,6 @@ const FormStylerApp = {
 			description: __("Style every matching element"),
 		});
 
-		console.log(`[getTargetOptions] After filter: ${options.length} options for term "${txt || ""}"`);
 		return options;
 	},
 
@@ -721,8 +711,7 @@ const FormStylerApp = {
 			if (newDt === lastDt) return; // same value = validation echo, skip
 			lastDt = newDt;
 			r.doctype_name = newDt;
-			console.log("[doctypeChange] Doctype changed to:", newDt);
-
+			
 			// Clear stale cache
 			Object.keys(self.doctypeFields).forEach(k => delete self.doctypeFields[k]);
 			Object.keys(self.fieldsFetchPromises).forEach(k => delete self.fieldsFetchPromises[k]);
