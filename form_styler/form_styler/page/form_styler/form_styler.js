@@ -127,20 +127,36 @@ const FormStylerApp = {
     },
 
     // ── Single bulk fetch, called once ──────────────────────────────────────
-    async prefetchAllMeta() {
-        if (this._metaStore !== null) return;        // already loaded
-        if (this._metaLoadPromise) return this._metaLoadPromise; // in flight
+	async prefetchAllMeta() {
+        if (this._metaStore !== null) return;
+        if (this._metaLoadPromise) return this._metaLoadPromise;
 
-        this._metaLoadPromise = frappe.xcall(
-            "form_styler.utils.get_all_doctype_fields_bulk"
-        ).then(data => {
-            this._metaStore = data || {};
-            this._metaLoadPromise = null;
-        }).catch(err => {
-            console.error("[FormStyler] bulk meta fetch failed:", err);
-            this._metaStore = {};    // degrade gracefully
-            this._metaLoadPromise = null;
-        });
+        this._metaLoadPromise = frappe.xcall("form_styler.utils.get_all_doctype_fields_bulk")
+            .then(data => {
+                const hydrated = {};
+                
+                // Rehydrate the minified arrays back into objects
+                for (const [dt, buckets] of Object.entries(data || {})) {
+                    hydrated[dt] = { Field: [], Section: [], Column: [] };
+                    
+                    for (const type of ["Field", "Section", "Column"]) {
+                        if (buckets[type]) {
+                            hydrated[dt][type] = buckets[type].map(arr => ({
+                                fieldname: arr[0],
+                                label: arr[1],
+                                fieldtype: arr[2]
+                            }));
+                        }
+                    }
+                }
+                
+                this._metaStore = hydrated;
+                this._metaLoadPromise = null;
+            }).catch(err => {
+                console.error("[FormStyler] bulk meta fetch failed:", err);
+                this._metaStore = {};
+                this._metaLoadPromise = null;
+            });
 
         return this._metaLoadPromise;
     },
@@ -222,7 +238,7 @@ const FormStylerApp = {
 		const btn = document.querySelector(".fs-new-btn-center");
 		if (btn) {
 			btn.textContent = this.rules.length === 0
-				? "Create First Rule"
+				? "＋ Create First Rule"
 				: "＋ Create Rule";
 		}
 	},

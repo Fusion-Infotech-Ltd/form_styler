@@ -250,46 +250,53 @@ def toggle_rule(name, is_active):
 
 @frappe.whitelist()
 def get_all_doctype_fields_bulk():
-    """
-    Single bulk fetch: all fields for all non-single, non-child doctypes.
-    Returns { doctype_name: { "Field": [...], "Section": [...], "Column": [...] } }
-    """
-    LAYOUT = {"Section Break", "Column Break", "Tab Break"}
+    def generate_meta_payload():
+        LAYOUT_EXCLUDE = {"Tab Break"}
+        
+        doctypes = frappe.get_all(
+            "DocType",
+            filters={
+                "in_create": 0,
+                "istable": 0,
+                "issingle": 0,
+                "name": ["!=", "Access Log"],
+            },
+            pluck="name",
+        )
 
-    doctypes = frappe.get_all(
-        "DocType",
-        filters={
-            "in_create": 0,
-            "istable": 0,
-            "issingle": 0,
-            "name": ["!=", "Access Log"],
-        },
-        pluck="name",
-    )
+        result = {}
+        for dt in doctypes:
+            try:
+                meta = frappe.get_meta(dt)
+            except Exception:
+                continue
 
-    result = {}
-    for dt in doctypes:
-        try:
-            meta = frappe.get_meta(dt)
-        except Exception:
-            continue
+            buckets = {"Field": [], "Section": [], "Column": []}
+            for f in meta.fields:
+                # OPTIMIZATION: Send a tuple (Array) instead of a Dictionary
+                item = (f.fieldname, f.label or f.fieldname, f.fieldtype)
 
-        buckets = {"Field": [], "Section": [], "Column": []}
-        for f in meta.fields:
-            item = {
-                "fieldname": f.fieldname,
-                "label": f.label or f.fieldname,
-                "fieldtype": f.fieldtype,
-            }
-            if f.fieldtype == "Section Break":
-                buckets["Section"].append(item)
-            elif f.fieldtype == "Column Break":
-                buckets["Column"].append(item)
-            elif f.fieldtype not in LAYOUT:
-                buckets["Field"].append(item)
+                if f.fieldtype == "Section Break":
+                    buckets["Section"].append(item)
+                elif f.fieldtype == "Column Break":
+                    buckets["Column"].append(item)
+                elif f.fieldtype not in LAYOUT_EXCLUDE:
+                    buckets["Field"].append(item)
 
-        # Only include doctypes that have at least one field
-        if any(buckets.values()):
-            result[dt] = buckets
+            if any(buckets.values()):
+                result[dt] = buckets
 
-    return result
+        return result
+
+    # 1. Try to get the cached data
+    cached_data = frappe.cache().get_value("form_styler_meta_bulk")
+    if cached_data:
+        return cached_data
+
+    # 2. If no cache exists (or it expired), generate fresh data
+    new_data = generate_meta_payload()
+    
+    # 3. Save it to the cache with the 24-hour expiration
+    frappe.cache().set_value("form_styler_meta_bulk", new_data, expires_in_sec=86400)
+
+    return new_data
