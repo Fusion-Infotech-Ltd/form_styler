@@ -1,3 +1,8 @@
+// Author: Raisul Islam (raisul.aust1@gmail.com)	
+// Date: 2026-05-26
+// Version: 1.0.0
+// Description: Form Styler is a Frappe app that allows you to customize the width, height, background color, hover effects, label color, and text color of fields, Section Breaks, and Column Breaks directly from the UI. It helps you design and personalize form layouts efficiently without writing custom code, giving you more flexibility beyond the default Frappe layout system.
+
 // ── Form Styler Page ──────────────────────────────────────────────────────────
 // Full SPA-style UI built with vanilla JS inside Frappe's Page framework.
 
@@ -7,8 +12,6 @@ frappe.pages["form-styler"].on_page_load = function (wrapper) {
 		title: "Form Styler",
 		single_column: true,
 	});
-
-	// page.set_indicator("Beta", "orange");
 
 	// Toolbar buttons
 	page.add_menu_item("New Rule", () => FormStylerApp.openEditor(null));
@@ -101,25 +104,22 @@ const DIM_KEYS = {
 	Section: { w: "section_width", h: "section_height", label: "Section", wMax: 1200, hMax: 800 },
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 // MAIN APP OBJECT
-// ─────────────────────────────────────────────────────────────────────────────
 const FormStylerApp = {
 	rules: [],
 	currentRule: null,
 	doctypeFields: {},
-	_fieldsFetchPromises: {}, // Track ongoing fetches per cache key
+	fieldsFetchPromises: {}, // Track ongoing fetches per cache key
 
-	// ── Init ──────────────────────────────────────────────────────────────────
 	async init(wrapper, page) {
 		this.wrapper = wrapper;
 		this.page = page;
 		this._scopeControls = { doctype: null, target: null };
-		this._buildLayout();
+		this.buildLayout();
 		await this.loadRules();
 	},
 
-	_buildLayout() {
+	buildLayout() {
 		// In Frappe v16 the page .html template is not always auto-injected
 		// into the wrapper, so we resolve a mount point and ensure the
 		// #fs-app-root container exists before writing to it.
@@ -174,7 +174,7 @@ const FormStylerApp = {
 
 		// Event: search
 		root.querySelector(".fs-search").addEventListener("input", (e) => {
-			this._filterRules(e.target.value);
+			this.filterRules(e.target.value);
 		});
 	},
 
@@ -182,10 +182,10 @@ const FormStylerApp = {
 	async loadRules() {
 		const res = await frappe.call({ method: "form_styler.utils.get_style_rules" });
 		this.rules = res.message || [];
-		this._renderRuleList(this.rules);
+		this.renderRuleList(this.rules);
 	},
 
-	_renderRuleList(rules) {
+	renderRuleList(rules) {
 		const list = document.getElementById("fs-rule-list");
 		if (!rules.length) {
 			list.innerHTML = `<div class="fs-empty-state">No rules yet. Create one →</div>`;
@@ -220,7 +220,7 @@ const FormStylerApp = {
 		});
 	},
 
-	_filterRules(query) {
+	filterRules(query) {
 		const q = query.toLowerCase();
 		const filtered = this.rules.filter(
 			(r) =>
@@ -228,17 +228,17 @@ const FormStylerApp = {
 				(r.doctype_name || "").toLowerCase().includes(q) ||
 				(r.field_type || "").toLowerCase().includes(q),
 		);
-		this._renderRuleList(filtered);
+		this.renderRuleList(filtered);
 	},
 
 	// ── Editor ────────────────────────────────────────────────────────────────
 	openEditor(rule) {
-		this.currentRule = rule ? { ...rule } : this._blankRule();
-		this._renderEditor();
-		this._renderRuleList(this.rules); // refresh active state
+		this.currentRule = rule ? { ...rule } : this.blankRule();
+		this.renderEditor();
+		this.renderRuleList(this.rules); // refresh active state
 	},
 
-	_blankRule() {
+	blankRule() {
 		return {
 			name: null,
 			rule_name: "",
@@ -263,7 +263,7 @@ const FormStylerApp = {
 		};
 	},
 
-	_renderEditor() {
+	renderEditor() {
 		const r = this.currentRule;
 		const editor = document.getElementById("fs-editor");
 
@@ -395,21 +395,21 @@ const FormStylerApp = {
   </div>
 </div>`;
 
-		this._bindEditorEvents(editor);
+		this.bindEditorEvents(editor);
 		// Async setup of criteria — waits for data to be pre-fetched
-		this._updateCriteria()
+		this.updateCriteria()
 			.then(() => {
-				this._updateDimensions();
-				this._updateCSSPreview();
+				this.updateDimensions();
+				this.updateCSSPreview();
 			})
 			.catch(err => {
-				console.error("[_renderEditor] Error updating criteria:", err);
-				this._updateDimensions();
-				this._updateCSSPreview();
+				console.error("[renderEditor] Error updating criteria:", err);
+				this.updateDimensions();
+				this.updateCSSPreview();
 			});
 	},
 
-	_bindEditorEvents(editor) {
+	bindEditorEvents(editor) {
 		const self = this;
 		const r = this.currentRule;
 
@@ -440,11 +440,11 @@ const FormStylerApp = {
 					r.apply_to = "Multiple Fields in DocType";
 				
 					Object.keys(self.doctypeFields).forEach((k) => delete self.doctypeFields[k]);
-					Object.keys(self._fieldsFetchPromises).forEach((k) => delete self._fieldsFetchPromises[k]);
-					self._updateCriteria();
-					self._updateDimensions();
+					Object.keys(self.fieldsFetchPromises).forEach((k) => delete self.fieldsFetchPromises[k]);
+					self.updateCriteria();
+					self.updateDimensions();
 				}
-				self._updateCSSPreview();
+				self.updateCSSPreview();
 			});
 		});
 
@@ -455,7 +455,7 @@ const FormStylerApp = {
 				r[field] = "";
 				const text = editor.querySelector(`.fs-color-text[data-field="${field}"]`);
 				if (text) text.value = "";
-				self._updateCSSPreview();
+				self.updateCSSPreview();
 			});
 		});
 
@@ -470,33 +470,33 @@ const FormStylerApp = {
 				const colorRow = document.getElementById("fs-hover-color-row");
 				if (colorRow)
 					colorRow.style.display = r.hover_effect === "Highlight" ? "" : "none";
-				self._updateCSSPreview();
+				self.updateCSSPreview();
 			});
 		});
 
 		// Save
-		editor.querySelector(".fs-save-btn").addEventListener("click", () => self._saveRule());
+		editor.querySelector(".fs-save-btn").addEventListener("click", () => self.saveRule());
 
 		// Delete
 		const deleteBtn = editor.querySelector(".fs-delete-btn");
 		if (deleteBtn) {
-			deleteBtn.addEventListener("click", () => self._deleteRule());
+			deleteBtn.addEventListener("click", () => self.deleteRule());
 		}
 	},
 
-	_parseCssPx(val, fallback) {
+	parseCssPx(val, fallback) {
 		if (!val) return fallback;
 		const m = String(val).match(/^([\d.]+)\s*(px|%|rem|em)?$/);
 		if (!m) return fallback;
 		return { num: parseFloat(m[1]), unit: m[2] || "px" };
 	},
 
-	_formatCssSize(num, unit) {
+	formatCssSize(num, unit) {
 		if (unit === "%") return `${Math.round(num)}%`;
 		return `${Math.round(num)}px`;
 	},
 
-	async _loadDoctypeFields(doctype, target) {
+	async loadDoctypeFields(doctype, target) {
 		if (!doctype) return [];
 		const cacheKey = `${doctype}::${target || "Field"}`;
 		if (this.doctypeFields[cacheKey]) {
@@ -523,7 +523,7 @@ const FormStylerApp = {
 		}
 	},
 
-	_destroyScopeControls() {
+	destroyScopeControls() {
 		["doctype", "target"].forEach((key) => {
 			const ctrl = this._scopeControls && this._scopeControls[key];
 			if (ctrl && ctrl.$wrapper) {
@@ -533,14 +533,14 @@ const FormStylerApp = {
 		this._scopeControls = { doctype: null, target: null };
 	},
 
-	_targetLabel() {
+	targetLabel() {
 		const t = this.currentRule.target_element || "Field";
 		if (t === "Section") return __("Section(s)");
 		if (t === "Column") return __("Column(s)");
 		return __("Field(s)");
 	},
 
-	_syncSelectionFromTargetControl() {
+	syncSelectionFromTargetControl() {
 		const r = this.currentRule;
 		const ctrl = this._scopeControls && this._scopeControls.target;
 		if (!ctrl) return;
@@ -566,12 +566,12 @@ const FormStylerApp = {
 		}
 	},
 
-	_setTargetLoading(show) {
+	setTargetLoading(show) {
 		const el = document.getElementById("fs-target-loading");
 		if (el) el.classList.toggle("hide", !show);
 	},
 
-	async _getTargetOptions(txt) {
+	async getTargetOptions(txt) {
 		const r = this.currentRule;
 		const dt = r.doctype_name;
 		if (!dt) {
@@ -585,14 +585,14 @@ const FormStylerApp = {
 		// If not in cache, fetch it now
 		if (!this.doctypeFields[cacheKey]) {
 			console.log(`[getTargetOptions] Cache miss for ${cacheKey}, fetching...`);
-			this._setTargetLoading(true);
+			this.setTargetLoading(true);
 			try {
-				await this._loadDoctypeFields(dt, r.target_element || "Field");
+				await this.loadDoctypeFields(dt, r.target_element || "Field");
 				console.log(`[getTargetOptions] Fetch complete, cache now has data`);
-				this._setTargetLoading(false);
+				this.setTargetLoading(false);
 			} catch (err) {
 				console.error(`[getTargetOptions] Error fetching for ${cacheKey}:`, err);
-				this._setTargetLoading(false);
+				this.setTargetLoading(false);
 			}
 		} else {
 			console.log(`[getTargetOptions] Using cache for ${cacheKey}`);
@@ -628,10 +628,10 @@ const FormStylerApp = {
 		return options;
 	},
 
-	async _setupScopeControls(area) {
+	async setupScopeControls(area) {
 		const self = this;
 		const r = this.currentRule;
-		this._destroyScopeControls();
+		this.destroyScopeControls();
 		this._scopeControls = { doctype: null, target: null };
 
 		const dtMount = area.querySelector("#fs-doctype-mount");
@@ -658,11 +658,11 @@ const FormStylerApp = {
 		this._targetCtrl = frappe.ui.form.make_control({
 			parent: tgtMount,
 			df: {
-				label: this._targetLabel(),
+				label: this.targetLabel(),
 				fieldtype: "MultiSelectList",
 				fieldname: "fieldname",
 				reqd: 1,
-				get_data(txt) { return self._getTargetOptions(txt); },
+				get_data(txt) { return self.getTargetOptions(txt); },
 			},
 			render_input: true,
 		});
@@ -672,9 +672,9 @@ const FormStylerApp = {
 		if (r.doctype_name) {
 			const cacheKey = `${r.doctype_name}::${r.target_element || "Field"}`;
 			if (!this.doctypeFields[cacheKey]) {
-				this._setTargetLoading(true);
-				await this._loadDoctypeFields(r.doctype_name, r.target_element || "Field")
-					.finally(() => this._setTargetLoading(false));
+				this.setTargetLoading(true);
+				await this.loadDoctypeFields(r.doctype_name, r.target_element || "Field")
+					.finally(() => this.setTargetLoading(false));
 			}
 		} 
 
@@ -685,7 +685,7 @@ const FormStylerApp = {
 				: (r.fieldname || "").split(",").map(s => s.trim()).filter(Boolean);
 
 		// ── Guards ────────────────────────────────────────────────────────
-		// `locked`  → guards TARGET handler during _forceTargetValues init only.
+		// `locked`  → guards TARGET handler during forceTargetValues init only.
 		// `lastDt`  → guards DOCTYPE handler: programmatic set_value fires change
 		//             with the SAME value (skipped); a real user pick has a
 		//             DIFFERENT value (proceeds). No timing window at all.
@@ -701,7 +701,7 @@ const FormStylerApp = {
 
 			// Clear stale cache
 			Object.keys(self.doctypeFields).forEach(k => delete self.doctypeFields[k]);
-			Object.keys(self._fieldsFetchPromises).forEach(k => delete self._fieldsFetchPromises[k]);
+			Object.keys(self.fieldsFetchPromises).forEach(k => delete self.fieldsFetchPromises[k]);
 
 			// Reset target selection
 			if (self._targetCtrl) { self._targetCtrl.set_value([]); r.fieldname = ""; }
@@ -709,17 +709,17 @@ const FormStylerApp = {
 			// *** KEY FIX: eagerly pre-warm cache for the new doctype so the
 			// Fields dropdown has data ready before the user opens it ***
 			if (newDt) {
-				self._setTargetLoading(true);
-				self._loadDoctypeFields(newDt, r.target_element || "Field")
-					.finally(() => self._setTargetLoading(false));
+				self.setTargetLoading(true);
+				self.loadDoctypeFields(newDt, r.target_element || "Field")
+					.finally(() => self.setTargetLoading(false));
 			}
-			self._updateCSSPreview();
+			self.updateCSSPreview();
 		});
 
 		this._targetCtrl.$input.on("change", () => {
-			if (locked) return; // prevents init-time _forceTargetValues cascade
-			self._syncSelectionFromTargetControl();
-			self._updateCSSPreview();
+			if (locked) return; // prevents init-time forceTargetValues cascade
+			self.syncSelectionFromTargetControl();
+			self.updateCSSPreview();
 		});
 
 		// Trigger initial doctype value — fires validation → change → lastDt guard skips it ✓
@@ -729,14 +729,14 @@ const FormStylerApp = {
 
 		// Release target lock after initial values are confirmed
 		if (initial.length) {
-			this._forceTargetValues(this._targetCtrl, initial, () => { locked = false; });
+			this.forceTargetValues(this._targetCtrl, initial, () => { locked = false; });
 		} else {
 			setTimeout(() => { locked = false; }, 5000);
 		}
 	},
 	// Retries set_value until get_value() confirms the values are actually set.
 	// Gives up after MAX attempts and releases the lock regardless.
-	_forceTargetValues(ctrl, values, onDone, attempt = 0) {
+	forceTargetValues(ctrl, values, onDone, attempt = 0) {
 		const MAX = 15, INTERVAL = 200;
 
 		try {
@@ -760,7 +760,7 @@ const FormStylerApp = {
 					if (confirmed || attempt >= MAX) {
 						onDone?.(); // ← lock released here, only after values visible
 					} else {
-						this._forceTargetValues(ctrl, values, onDone, attempt + 1);
+						this.forceTargetValues(ctrl, values, onDone, attempt + 1);
 					}
 				} catch (_) { onDone?.(); }
 			}, INTERVAL);
@@ -768,7 +768,7 @@ const FormStylerApp = {
 		} catch (_) { onDone?.(); }
 	},
 
-	async _updateCriteria() {
+	async updateCriteria() {
 		const r = this.currentRule;
 		const area = document.getElementById("fs-criteria-area");
 		if (!area) return;
@@ -795,10 +795,10 @@ const FormStylerApp = {
 	</div>`;
 
 		// AWAIT the setup to complete before returning — don't let dropdown be opened until data ready
-		await this._setupScopeControls(area);
+		await this.setupScopeControls(area);
 	},
 
-	_bindResizePanel(host) {
+	bindResizePanel(host) {
 		const self = this;
 		const r = this.currentRule;
 		const target = r.target_element || "Field";
@@ -817,14 +817,14 @@ const FormStylerApp = {
 			boxLabel.textContent = `${keys.label} preview — drag corner`;
 		}
 
-		const wParsed = this._parseCssPx(r[keys.w], { num: 200, unit: "px" });
-		const hParsed = this._parseCssPx(r[keys.h], { num: 40, unit: "px" });
+		const wParsed = this.parseCssPx(r[keys.w], { num: 200, unit: "px" });
+		const hParsed = this.parseCssPx(r[keys.h], { num: 40, unit: "px" });
 		const unit = wParsed.unit === "%" ? "%" : "px";
 		if (unitSel) unitSel.value = unit;
 
 		const applySize = (wNum, hNum, unitType) => {
-			const wCss = this._formatCssSize(wNum, unitType);
-			const hCss = this._formatCssSize(hNum, unitType);
+			const wCss = this.formatCssSize(wNum, unitType);
+			const hCss = this.formatCssSize(hNum, unitType);
 			r[keys.w] = wCss;
 			r[keys.h] = hCss;
 			if (unitType === "px") {
@@ -840,7 +840,7 @@ const FormStylerApp = {
 			if (hRange) hRange.value = hNum;
 			if (wVal) wVal.textContent = wCss;
 			if (hVal) hVal.textContent = hCss;
-			self._updateCSSPreview();
+			self.updateCSSPreview();
 		};
 
 		applySize(wParsed.num, hParsed.num, unit);
@@ -885,7 +885,7 @@ const FormStylerApp = {
 		}
 	},
 
-	_updateDimensions() {
+	updateDimensions() {
 		const r = this.currentRule;
 		const host = document.getElementById("fs-resize-host");
 		if (!host) return;
@@ -917,10 +917,10 @@ const FormStylerApp = {
   </div>
 </div>`;
 
-		this._bindResizePanel(host);
+		this.bindResizePanel(host);
 	},
 
-	_updateCSSPreview() {
+	updateCSSPreview() {
 		const el = document.getElementById("fs-css-preview");
 		if (!el) return;
 		const css = window.FormStyler && window.FormStyler.buildRuleCSS(this.currentRule);
@@ -928,7 +928,7 @@ const FormStylerApp = {
 	},
 
 	// ── Persistence ───────────────────────────────────────────────────────────
-	async _saveRule() {
+	async saveRule() {
 		const r = this.currentRule;
 		if (!r.rule_name || !r.rule_name.trim()) {
 			frappe.msgprint("Please enter a Rule Name.");
@@ -939,14 +939,14 @@ const FormStylerApp = {
 			r.doctype_name = this._scopeControls.doctype.get_value() || "";
 		}
 		if (this._scopeControls?.target) {
-			this._syncSelectionFromTargetControl();
+			this.syncSelectionFromTargetControl();
 		}
 		if (!r.doctype_name) {
 			frappe.msgprint(__("Please select a DocType."));
 			return;
 		}
 		if (!r.fieldname) {
-			frappe.msgprint(__("Please select at least one {0}", [this._targetLabel()]));
+			frappe.msgprint(__("Please select at least one {0}", [this.targetLabel()]));
 			return;
 		}
 
@@ -964,7 +964,7 @@ const FormStylerApp = {
 				// ✅ Re-open editor with fresh rule from server so MultiSelectList re-hydrates correctly
 				const freshRule = this.rules.find((ru) => ru.name === r.name);
 				if (freshRule) this.openEditor(freshRule);
-				else this._renderRuleList(this.rules);
+				else this.renderRuleList(this.rules);
 
 				if (window.FormStyler) {
 					const result = await FormStyler.reloadAndInject();
@@ -998,7 +998,7 @@ const FormStylerApp = {
 		}
 	},
 
-	async _deleteRule() {
+	async deleteRule() {
 		const name = this.currentRule.name;
 		if (!name) return;
 		const confirmed = await new Promise((res) => {
