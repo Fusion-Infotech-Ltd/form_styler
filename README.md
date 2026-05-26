@@ -23,9 +23,10 @@ Confirm the app is loaded: open browser DevTools → Network → filter `form_st
 
 ## Screenshots
 
-<img width="1888" height="896" alt="image" src="https://github.com/user-attachments/assets/d34cd6a1-735d-4465-a306-1805a63d86df" />
+<img width="1676" height="913" alt="image" src="https://github.com/user-attachments/assets/05c9394e-8f8d-4c1e-a270-65abf009a05b" />
 <img width="1897" height="917" alt="image" src="https://github.com/user-attachments/assets/359272e8-95ac-4ebf-a746-56aa41007962" />
-<img width="1868" height="612" alt="image" src="https://github.com/user-attachments/assets/5a09fb6d-18d3-4991-8b35-887e61f2e244" />
+<img width="1897" height="910" alt="image" src="https://github.com/user-attachments/assets/0815ac72-2a73-48e9-aca1-87b4b940d24d" />
+
 
 ---
 ## Create a test rule (Asset form example)
