@@ -111,6 +111,7 @@ const FormStylerApp = {
 	doctypeFields: {},
 	fieldsFetchPromises: {}, // Track ongoing fetches per cache key
 
+
 	async init(wrapper, page) {
 		this.wrapper = wrapper;
 		this.page = page;
@@ -162,7 +163,9 @@ const FormStylerApp = {
       <div class="fs-placeholder-icon">🎨</div>
       <div class="fs-placeholder-title">Form Styler</div>
       <div class="fs-placeholder-sub">Select a rule to edit or create a new one</div>
-      <button class="btn btn-primary fs-new-btn-center">＋ Create First Rule</button>
+		<button class="btn btn-primary fs-new-btn-center">
+			Create First Rule
+		</button>
     </div>
   </div>
 </div>`;
@@ -178,11 +181,24 @@ const FormStylerApp = {
 		});
 	},
 
-	// ── Load Rules ────────────────────────────────────────────────────────────
 	async loadRules() {
-		const res = await frappe.call({ method: "form_styler.utils.get_style_rules" });
+		const res = await frappe.call({
+			method: "form_styler.utils.get_style_rules",
+		});
+
 		this.rules = res.message || [];
+
 		this.renderRuleList(this.rules);
+
+		// Update placeholder button text dynamically
+		const btn = document.querySelector(".fs-new-btn-center");
+
+		if (btn) {
+			btn.textContent =
+				this.rules.length === 0
+					? "Create First Rule"
+					: "＋ Create Rule";
+		}
 	},
 
 	renderRuleList(rules) {
@@ -293,7 +309,7 @@ const FormStylerApp = {
       <div class="fs-grid-2">
         <div class="fs-field-group">
           <label>Target Element</label>
-          <select class="form-control form-control-sm" data-field="target_element">
+          <select class="form-control form-control-sm" data-field="target_element" style="max-width:300px !important; min-width:100px !important;">
             ${["Field", "Column", "Section"]
 				.map((o) => `<option ${r.target_element === o ? "selected" : ""}>${o}</option>`)
 				.join("")}
@@ -653,6 +669,10 @@ const FormStylerApp = {
 			},
 			render_input: true,
 		});
+		this._doctypeCtrl.$wrapper.css({
+			maxWidth: "300px",
+			minWidth: "100px"
+		});
 		this._scopeControls.doctype = this._doctypeCtrl;
 
 		this._targetCtrl = frappe.ui.form.make_control({
@@ -665,6 +685,10 @@ const FormStylerApp = {
 				get_data(txt) { return self.getTargetOptions(txt); },
 			},
 			render_input: true,
+		});
+		this._targetCtrl.$wrapper.css({
+			maxWidth: "300px",
+			minWidth: "100px"
 		});
 		this._scopeControls.target = this._targetCtrl;
 
