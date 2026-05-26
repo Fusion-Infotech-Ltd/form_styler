@@ -89,7 +89,6 @@ const HOVER_EFFECTS = {
 		desc: "Glowing border on hover",
 		css: () => `
   &:hover .form-control, &:hover .like-disabled-input {
-    border-color: var(--primary) !important;
     box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.2) !important;
     transition: all 0.2s ease;
   }`,
@@ -106,19 +105,54 @@ const DIM_KEYS = {
 
 // MAIN APP OBJECT
 const FormStylerApp = {
-	rules: [],
-	currentRule: null,
-	doctypeFields: {},
-	fieldsFetchPromises: {}, // Track ongoing fetches per cache key
+    rules: [],
+    currentRule: null,
 
+    // ── NEW: flat in-memory store populated once at startup ──────────────────
+    // Shape: { "Sales Invoice": { Field: [...], Section: [...], Column: [...] } }
+    _metaStore: null,          // null = not yet loaded, {} = loaded (may be empty)
+    _metaLoadPromise: null,    // guards against double-fetch on slow connections
 
-	async init(wrapper, page) {
-		this.wrapper = wrapper;
-		this.page = page;
-		this._scopeControls = { doctype: null, target: null };
-		this.buildLayout();
-		await this.loadRules();
-	},
+    async init(wrapper, page) {
+        this.wrapper = wrapper;
+        this.page = page;
+        this._scopeControls = { doctype: null, target: null };
+        this.buildLayout();
+
+        // Kick off both loads in parallel — rules and meta at the same time
+        await Promise.all([
+            this.loadRules(),
+            this.prefetchAllMeta(),
+        ]);
+    },
+
+    // ── Single bulk fetch, called once ──────────────────────────────────────
+    async prefetchAllMeta() {
+        if (this._metaStore !== null) return;        // already loaded
+        if (this._metaLoadPromise) return this._metaLoadPromise; // in flight
+
+        this._metaLoadPromise = frappe.xcall(
+            "form_styler.utils.get_all_doctype_fields_bulk"
+        ).then(data => {
+            this._metaStore = data || {};
+            this._metaLoadPromise = null;
+        }).catch(err => {
+            console.error("[FormStyler] bulk meta fetch failed:", err);
+            this._metaStore = {};    // degrade gracefully
+            this._metaLoadPromise = null;
+        });
+
+        return this._metaLoadPromise;
+    },
+
+    // ── Synchronous lookup — no network, no await, no race ──────────────────
+    getFieldsFor(doctype, targetElement) {
+        if (!doctype || !this._metaStore) return [];
+        const bucket = targetElement === "Section" ? "Section"
+                     : targetElement === "Column"  ? "Column"
+                     : "Field";
+        return (this._metaStore[doctype] || {})[bucket] || [];
+    },
 
 	buildLayout() {
 		// In Frappe v16 the page .html template is not always auto-injected
@@ -182,22 +216,14 @@ const FormStylerApp = {
 	},
 
 	async loadRules() {
-		const res = await frappe.call({
-			method: "form_styler.utils.get_style_rules",
-		});
-
-		this.rules = res.message || [];
-
+		this.rules = await frappe.xcall("form_styler.utils.get_style_rules") || [];
 		this.renderRuleList(this.rules);
 
-		// Update placeholder button text dynamically
 		const btn = document.querySelector(".fs-new-btn-center");
-
 		if (btn) {
-			btn.textContent =
-				this.rules.length === 0
-					? "Create First Rule"
-					: "＋ Create Rule";
+			btn.textContent = this.rules.length === 0
+				? "Create First Rule"
+				: "＋ Create Rule";
 		}
 	},
 
@@ -262,7 +288,7 @@ const FormStylerApp = {
 			priority: 10,
 			apply_to: "Multiple Fields in DocType",
 			target_element: "Field",
-			doctype_name: "Employee",
+			doctype_name: "",
 			fieldname: "",
 			field_type: "Data",
 			field_width: "",
@@ -451,12 +477,8 @@ const FormStylerApp = {
 				}
 				// Cascade updates
 				if (field === "target_element") {
-
 					r.fieldname = "";
 					r.apply_to = "Multiple Fields in DocType";
-				
-					Object.keys(self.doctypeFields).forEach((k) => delete self.doctypeFields[k]);
-					Object.keys(self.fieldsFetchPromises).forEach((k) => delete self.fieldsFetchPromises[k]);
 					self.updateCriteria();
 					self.updateDimensions();
 				}
@@ -584,232 +606,142 @@ const FormStylerApp = {
 		if (el) el.classList.toggle("hide", !show);
 	},
 
-	async getTargetOptions(txt) {
-		const r = this.currentRule;
-		const dt = r.doctype_name;
-		if (!dt) {
-			return [];
-		}
+    getTargetOptions(txt) {
+        const r = this.currentRule;
+        const fields = this.getFieldsFor(r.doctype_name, r.target_element);
 
-		const cacheKey = `${dt}::${r.target_element || "Field"}`;
-		const self = this;
-		
-		// If not in cache, fetch it now
-		if (!this.doctypeFields[cacheKey]) {
-			this.setTargetLoading(true);
-			try {
-				await this.loadDoctypeFields(dt, r.target_element || "Field");
-				this.setTargetLoading(false);
-			} catch (err) {
-				console.error(`[getTargetOptions] Error fetching for ${cacheKey}:`, err);
-				this.setTargetLoading(false);
-			}
-		} 
+        const term = (txt || "").toLowerCase();
+        const filtered = !term
+            ? fields
+            : fields.filter(f =>
+                f.fieldname.toLowerCase().includes(term) ||
+                (f.label || "").toLowerCase().includes(term) ||
+                f.fieldtype.toLowerCase().includes(term)
+            );
 
-		// Get cached data (now guaranteed to exist)
-		const fields = this.doctypeFields[cacheKey] || [];
-				
-		const term = (txt || "").toLowerCase();
-		const filtered = fields.filter((f) => {
-			if (!term) return true;
-			return (
-				f.fieldname.toLowerCase().includes(term) ||
-				(f.label || "").toLowerCase().includes(term) ||
-				f.fieldtype.toLowerCase().includes(term)
-			);
-		});
+        const options = filtered.map(f => ({
+            value: f.fieldname,
+            label: f.label || f.fieldname,
+            description: f.fieldtype,
+        }));
 
-		let options = filtered.map((f) => ({
-			value: f.fieldname,
-			label: f.label || f.fieldname,
-			description: f.fieldtype,
-		}));
+        options.unshift({
+            value: "__all__",
+            label: __("All in this DocType"),
+            description: __("Style every matching element"),
+        });
 
-		options.unshift({
-			value: "__all__",
-			label: __("All in this DocType"),
-			description: __("Style every matching element"),
-		});
+        return options;   // plain array — MultiSelectList accepts sync return
+    },
 
-		return options;
-	},
-
+    // ── Spinner helper becomes a no-op (kept so no call-sites break) ─────────
 	async setupScopeControls(area) {
 		const self = this;
 		const r = this.currentRule;
 		this.destroyScopeControls();
 		this._scopeControls = { doctype: null, target: null };
 
-		const dtMount = area.querySelector("#fs-doctype-mount");
+		const dtMount  = area.querySelector("#fs-doctype-mount");
 		const tgtMount = area.querySelector("#fs-target-mount");
 		if (!dtMount || !tgtMount) return;
 
-		// ── Build controls ────────────────────────────────────────────────
-		this._doctypeCtrl = frappe.ui.form.make_control({
-			parent: dtMount,
-			df: {
-				label: __("DocType"),
-				fieldtype: "Link",
-				options: "DocType",
-				fieldname: "doctype_name",
-				reqd: 1,
-				get_query: () => ({
-					filters: { in_create: 0, istable: 0, issingle: 0, name: ["!=", "Access Log"] }
-				})
-			},
-			render_input: true,
-		});
-		this._doctypeCtrl.$wrapper.css({
-			maxWidth: "300px",
-			minWidth: "100px"
-		});
-		this._scopeControls.doctype = this._doctypeCtrl;
+        // ── DocType control ──────────────────────────────────────────────────
+        this._doctypeCtrl = frappe.ui.form.make_control({
+            parent: dtMount,
+            df: {
+                label: __("DocType"),
+                fieldtype: "Link",
+                options: "DocType",
+                fieldname: "doctype_name",
+                reqd: 1,
+                get_query: () => ({
+                    filters: { in_create: 0, istable: 0, issingle: 0, name: ["!=", "Access Log"] },
+                }),
+            },
+            render_input: true,
+        });
+        this._doctypeCtrl.$wrapper.css({ maxWidth: "300px", minWidth: "100px" });
+        this._scopeControls.doctype = this._doctypeCtrl;
 
-		this._targetCtrl = frappe.ui.form.make_control({
-			parent: tgtMount,
-			df: {
-				label: this.targetLabel(),
-				fieldtype: "MultiSelectList",
-				fieldname: "fieldname",
-				reqd: 1,
-				get_data(txt) { return self.getTargetOptions(txt); },
-			},
-			render_input: true,
-		});
-		this._targetCtrl.$wrapper.css({
-			maxWidth: "300px",
-			minWidth: "100px"
-		});
-		this._scopeControls.target = this._targetCtrl;
+        // ── Target (field/section/column) control ────────────────────────────
+        this._targetCtrl = frappe.ui.form.make_control({
+            parent: tgtMount,
+            df: {
+                label: this.targetLabel(),
+                fieldtype: "MultiSelectList",
+                fieldname: "fieldname",
+                reqd: 1,
+                // Now synchronous — no await, no race
+                get_data: (txt) => self.getTargetOptions(txt),
+            },
+            render_input: true,
+        });
+        this._targetCtrl.$wrapper.css({ maxWidth: "300px", minWidth: "100px" });
+        this._scopeControls.target = this._targetCtrl;
 
-		// ── Pre-warm cache for already-known doctype (editing existing rule) ──
-		if (r.doctype_name) {
-			const cacheKey = `${r.doctype_name}::${r.target_element || "Field"}`;
-			if (!this.doctypeFields[cacheKey]) {
-				this.setTargetLoading(true);
-				await this.loadDoctypeFields(r.doctype_name, r.target_element || "Field")
-					.finally(() => this.setTargetLoading(false));
-			}
-		} 
-
-		// ── Snapshot initial fieldname values ─────────────────────────────
-		const initial =
-			r.fieldname === "__all__" || r.apply_to === "All Fields in DocType"
-				? ["__all__"]
-				: (r.fieldname || "").split(",").map(s => s.trim()).filter(Boolean);
-
-		// ── Guards ────────────────────────────────────────────────────────
-		// `locked`  → guards TARGET handler during forceTargetValues init only.
-		// `lastDt`  → guards DOCTYPE handler: programmatic set_value fires change
-		//             with the SAME value (skipped); a real user pick has a
-		//             DIFFERENT value (proceeds). No timing window at all.
-		let locked = true;
 		let lastDt = r.doctype_name || "";
 
-		this._doctypeCtrl.$input.on("change", () => {
+		this._doctypeCtrl.df.onchange = () => {
 			const newDt = self._doctypeCtrl.get_value() || "";
-			if (newDt === lastDt) return; // same value = validation echo, skip
+			if (newDt === lastDt) return;
 			lastDt = newDt;
 			r.doctype_name = newDt;
-			
-			// Clear stale cache
-			Object.keys(self.doctypeFields).forEach(k => delete self.doctypeFields[k]);
-			Object.keys(self.fieldsFetchPromises).forEach(k => delete self.fieldsFetchPromises[k]);
-
-			// Reset target selection
-			if (self._targetCtrl) { self._targetCtrl.set_value([]); r.fieldname = ""; }
-
-			// *** KEY FIX: eagerly pre-warm cache for the new doctype so the
-			// Fields dropdown has data ready before the user opens it ***
-			if (newDt) {
-				self.setTargetLoading(true);
-				self.loadDoctypeFields(newDt, r.target_element || "Field")
-					.finally(() => self.setTargetLoading(false));
-			}
+			r.fieldname = "";
+			if (self._targetCtrl) self._targetCtrl.set_value([]);
 			self.updateCSSPreview();
-		});
+		};
 
-		this._targetCtrl.$input.on("change", () => {
-			if (locked) return; // prevents init-time forceTargetValues cascade
+		this._targetCtrl.df.onchange = () => {
 			self.syncSelectionFromTargetControl();
 			self.updateCSSPreview();
-		});
+		};
 
-		// Trigger initial doctype value — fires validation → change → lastDt guard skips it ✓
 		if (r.doctype_name) {
 			this._doctypeCtrl.set_value(r.doctype_name);
 		}
 
-		// Release target lock after initial values are confirmed
-		if (initial.length) {
-			this.forceTargetValues(this._targetCtrl, initial, () => { locked = false; });
-		} else {
-			setTimeout(() => { locked = false; }, 5000);
+		// ── KEY FIX: if bulk fetch is still in-flight, wait for it now ──────────
+		// This happens when the user clicks a rule before prefetchAllMeta resolves.
+		// _metaStore === null means loading, not "loaded but empty" ({}).
+		if (this._metaStore === null) {
+			await this.prefetchAllMeta();
+		}
+		// ────────────────────────────────────────────────────────────────────────
+
+		if (r.fieldname) {
+			const initial = r.fieldname === "__all__"
+				? ["__all__"]
+				: r.fieldname.split(",").map(s => s.trim()).filter(Boolean);
+
+			// Store is guaranteed populated here — set_value works first try
+			this._targetCtrl.set_value(initial);
 		}
 	},
-	// Retries set_value until get_value() confirms the values are actually set.
-	// Gives up after MAX attempts and releases the lock regardless.
-	forceTargetValues(ctrl, values, onDone, attempt = 0) {
-		const MAX = 15, INTERVAL = 200;
 
-		try {
-			// Stop if ctrl was removed from DOM (controls were rebuilt)
-			if (!ctrl?.$wrapper || !document.contains(ctrl.$wrapper[0])) {
-				onDone?.();
-				return;
-			}
-
-			ctrl.set_value(values);
-
-			setTimeout(() => {
-				try {
-					let got = ctrl.get_value() ?? null;
-					got = Array.isArray(got)
-						? got
-						: got ? String(got).split(",").map(s => s.trim()) : [];
-
-					const confirmed = values.every(v => got.includes(v));
-
-					if (confirmed || attempt >= MAX) {
-						onDone?.(); // ← lock released here, only after values visible
-					} else {
-						this.forceTargetValues(ctrl, values, onDone, attempt + 1);
-					}
-				} catch (_) { onDone?.(); }
-			}, INTERVAL);
-
-		} catch (_) { onDone?.(); }
-	},
 
 	async updateCriteria() {
-		const r = this.currentRule;
-		const area = document.getElementById("fs-criteria-area");
-		if (!area) return;
+			const r = this.currentRule;
+			const area = document.getElementById("fs-criteria-area");
+			if (!area) return;
 
-		const target = r.target_element || "Field";
-		const hint =
-			target === "Section"
-				? __("Pick section break name(s) from Customize Form")
-				: target === "Column"
-					? __("Pick column break name(s) from Customize Form")
-					: __("Pick input field name(s)");
+			const target = r.target_element || "Field";
+			const hint =
+				target === "Section" ? __("Pick section break name(s) from Customize Form")
+			: target === "Column"  ? __("Pick column break name(s) from Customize Form")
+			:                        __("Pick input field name(s)");
 
-		area.innerHTML = `
+			area.innerHTML = `
 	<div class="fs-scope-controls" style="margin-top:12px">
 	<div id="fs-doctype-mount"></div>
 	<div class="fs-field-group" style="margin-top:10px">
 		<div id="fs-target-mount"></div>
-		<div id="fs-target-loading" class="fs-target-loading hide">
-		<span class="spinner-border spinner-border-sm" role="status"></span>
-		${__("Loading fields…")}
-		</div>
 		<p class="text-muted small" style="margin:8px 0 0">${hint}</p>
 	</div>
 	</div>`;
 
-		// AWAIT the setup to complete before returning — don't let dropdown be opened until data ready
-		await this.setupScopeControls(area);
-	},
+			// No longer needs await — setupScopeControls is now nearly sync
+			await this.setupScopeControls(area);
+		},
 
 	bindResizePanel(host) {
 		const self = this;
