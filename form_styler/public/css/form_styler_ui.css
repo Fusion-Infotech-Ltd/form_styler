@@ -4,8 +4,6 @@
  * License: MIT
  */
 
-/* ── Form Styler UI Styles ─────────────────────────────────────────────────── */
-
 /* Layout */
 .fs-layout {
     display: flex;
@@ -21,7 +19,7 @@
     border-radius: 10px !important;
 }
 
-/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+/* ── Sidebar  */
 .fs-sidebar {
     width: 280px;
     min-width: 240px;
@@ -108,26 +106,6 @@
 .fs-rule-dot.active   { background: var(--green-500, #22c55e); }
 .fs-rule-dot.inactive { background: var(--gray-400, #9ca3af); }
 
-.fs-rule-name {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-color);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 140px;
-}
-
-.fs-rule-meta {
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-top: 1px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 150px;
-}
-
 .fs-rule-badges {
     display: flex;
     gap: 4px;
@@ -187,14 +165,14 @@
 }
 
 .fs-rule-name-input {
-    font-size: 18px;
+    font-size: 12px;
     font-weight: 600;
     border: none;
     background: transparent;
     color: var(--heading-color);
     outline: none;
-    width: 340px;
-    padding: 0;
+    width: 550px;
+    padding: 0 5px;
 }
 
 .fs-rule-name-input::placeholder { color: var(--text-muted); font-weight: 400; }
@@ -605,7 +583,7 @@
     width: 100%;
 }
 
-/* 4. Responsive tweak for small mobile viewports */
+/* Responsive tweak for small mobile viewports */
 @media (max-width: 600px) {
     .fs-resize-panel {
         flex-direction: column;
@@ -614,4 +592,128 @@
         flex: 1 1 auto;
         max-width: 100%;
     }
+}
+
+/* ── Sidebar Structural Setup ──────────────────────────────────────────── */
+.fs-sidebar {
+    position: relative; /* CRITICAL: Acts as the anchor point for the absolute resizer bar */
+    width: 280px;
+    min-width: 240px;
+    border-right: 1px solid var(--border-color, #e2e8f0);
+    display: flex;
+    flex-direction: column;
+    background: var(--subtle-fg, #fafafa);
+    transition: width 0.2s ease, min-width 0.2s ease;
+}
+
+/* Kills animation lag instantly during active pointer tracking */
+.fs-sidebar.is-resizing {
+    transition: none !important;
+}
+
+/* ── THE DRAG HANDLE (Fixes the missing mouse cursor) ─────────────────── */
+.fs-sidebar-resizer {
+    position: absolute;
+    top: 0;
+    right: -4px;          /* Centers click path directly over the border stroke */
+    width: 8px;           /* Generous hover zone makes grabbing easy */
+    height: 100%;
+    cursor: col-resize;   /* Forces the horizontal resizing mouse cursor */
+    z-index: 50;          /* Floating above all lists and scrollbars */
+    background: transparent;
+    transition: background 0.15s ease;
+}
+
+/* Subtly highlights the edge with a blue strip when hovered or dragged */
+.fs-sidebar-resizer:hover,
+.fs-sidebar-resizer.is-dragging {
+    background: rgba(27, 102, 236, 0.3) !important; 
+}
+
+/* ── Collapsed Logic ───────────────────────────────────────────────────── */
+.fs-sidebar.collapsed {
+    width: 0px !important;
+    min-width: 0px !important;
+    max-width: 0px !important;
+    border-right: none !important;
+}
+
+/* Keep internal structures from overflowing when width hits 0px */
+.fs-sidebar.collapsed .fs-search-wrap,
+.fs-sidebar.collapsed .fs-rule-list,
+.fs-sidebar.collapsed .fs-sidebar-resizer,
+.fs-sidebar.collapsed .fs-sidebar-title,
+.fs-sidebar.collapsed .fs-sidebar-header > .fs-new-btn {
+    display: none !important;
+}
+
+/* Keeps the header alive solely to house the floating collapse trigger */
+.fs-sidebar.collapsed .fs-sidebar-header {
+    position: absolute;
+    top: 12px;
+    left: 0;
+    z-index: 110;
+    padding: 0;
+    border: none;
+    width: auto;
+}
+
+.fs-sidebar.collapsed #fs-sidebar-collapse {
+    background: transparent;
+    border-left: none;
+    opacity: 0.7;
+    padding: 5px 5px;
+    cursor: pointer;
+    width: 40px;
+    display: flex;
+}
+
+.fs-rule-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    width: 100%;
+    min-width: 0; /* Unlocks sub-container width compression inside Flexbox */
+    box-sizing: border-box;
+}
+
+.fs-rule-item-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+}
+
+.fs-rule-item-left > div {
+    min-width: 0;
+    flex: 1;
+}
+
+.fs-rule-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-color, #1f2937);
+    white-space: nowrap;
+    overflow: hidden;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+.fs-rule-meta {
+    font-size: 11px;
+    color: var(--text-muted, #6b7280);
+    margin-top: 2px;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+.fs-rule-badges {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0; 
+    margin-left: 8px;
 }

@@ -12,10 +12,18 @@ frappe.pages["form-styler"].on_page_load = function (wrapper) {
 		title: "Form Styler",
 		single_column: true,
 	});
-
+	
 	// Toolbar buttons
-	page.add_menu_item("New Rule", () => FormStylerApp.openEditor(null));
-	page.add_menu_item("Reload Rules", () => FormStylerApp.loadRules());
+	page.set_primary_action('💾 Save', () => {
+		page.set_indicator('Saved', 'green');
+		FormStylerApp.saveRule();
+	});
+	page.add_button("➕", () => {
+		page.set_indicator('Not Saved', 'orange');	
+		FormStylerApp.openEditor(null);
+	});
+	page.add_button("⟳", () => FormStylerApp.loadRules());
+
 
 	// Mount app
 	FormStylerApp.init(wrapper, page);
@@ -110,12 +118,48 @@ const FormStylerApp = {
     // Shape: { "Sales Invoice": { Field: [...], Section: [...], Column: [...] } }
     _metaStore: null,          // null = not yet loaded, {} = loaded (may be empty)
     _metaLoadPromise: null,    // guards against double-fetch on slow connections
+	_isDirty: false,
+
+	dirty() {
+        return this._isDirty;
+    },
+
+	markDirty() {
+		if (this._initializing) return;
+		if (!this._isDirty) {
+			this._isDirty = true;
+			if (this.page) {
+				const ind = this.page.indicator;
+				if (ind) $(ind).show();               
+				this.page.set_indicator("Not Saved", "orange");
+			}
+		}
+	},
+
+	markClean() {
+		this._isDirty = false;
+		if (this.page) {
+			if (this.currentRule?.name) {
+				this.page.set_indicator("Saved", "green");
+			} else {
+				const ind = this.page.indicator;
+				if (ind) $(ind).hide();
+			}
+		}
+	},
+
+	markDlt(){
+		this.page.set_indicator("Deleted", "red");
+	},
 
     async init(wrapper, page) {
         this.wrapper = wrapper;
         this.page = page;
         this._scopeControls = { doctype: null, target: null };
         this.buildLayout();
+		this.initSidebarControls();
+		this.setupSidebarListEvents();
+		document.querySelector(".menu-btn-group").style.display = "none";
 
         // Kick off both loads in parallel — rules and meta at the same time
         await Promise.all([
@@ -159,6 +203,53 @@ const FormStylerApp = {
         return this._metaLoadPromise;
     },
 
+	initSidebarControls() {
+		const sidebar = document.getElementById("fs-sidebar");
+		const collapseBtn = document.getElementById("fs-sidebar-collapse");
+		const resizer = document.getElementById("fs-sidebar-resizer");
+
+		if (!sidebar) return;
+
+		// ── Handle Collapsing ──
+		if (collapseBtn) {
+			collapseBtn.addEventListener("click", () => {
+				const isCollapsed = sidebar.classList.toggle("collapsed");
+				// Switch button arrows based on state
+				collapseBtn.textContent = isCollapsed ? "▷" : "⮜";
+			});
+		}
+
+		// ── Handle Resizing ──
+		if (resizer) {
+			let startX, startWidth;
+			const onMove = (e) => {
+				const currentWidth = startWidth + (e.clientX - startX);
+				if (currentWidth >= 220 && currentWidth <= 480) {
+					sidebar.style.width = `${currentWidth}px`;
+					sidebar.style.minWidth = `${currentWidth}px`;
+				}
+			};
+			const onUp = () => {
+				resizer.classList.remove("is-dragging");
+				sidebar.classList.remove("is-resizing");
+				document.removeEventListener("mousemove", onMove);
+				document.removeEventListener("mouseup", onUp);
+			};
+			resizer.addEventListener("mousedown", (e) => {
+				// Prevent resizing logic if the sidebar is currently closed
+				if (sidebar.classList.contains("collapsed")) return;
+				
+				e.preventDefault();
+				startX = e.clientX;
+				startWidth = sidebar.offsetWidth;
+				resizer.classList.add("is-dragging");
+				sidebar.classList.add("is-resizing");
+				document.addEventListener("mousemove", onMove);
+				document.addEventListener("mouseup", onUp);
+			});
+		}
+	},
+
     // Synchronous lookup — no network, no await, no race 
     getFieldsFor(doctype, targetElement) {
         if (!doctype || !this._metaStore) return [];
@@ -192,17 +283,19 @@ const FormStylerApp = {
 		root.innerHTML = `
 <div class="fs-layout">
   <!-- LEFT: Rule List -->
-  <div class="fs-sidebar">
+  <div class="fs-sidebar" id="fs-sidebar">
     <div class="fs-sidebar-header">
       <span class="fs-sidebar-title">Style Rules</span>
-      <button class="btn btn-primary btn-xs fs-new-btn">＋ New Rule</button>
+	  <button class="fs-sidebar-toggle-btn" id="fs-sidebar-collapse" style="border: none !important; background: transparent;">⮜</button>
+      <button class="btn btn-primary btn-xs fs-new-btn">╋ New</button>
     </div>
     <div class="fs-search-wrap">
-      <input class="fs-search form-control form-control-sm" placeholder="Search rules…" />
+      <input class="fs-search form-control form-control-sm" placeholder="Search rules…" style="border: 1px solid #a3a3a3;" />
     </div>
     <div id="fs-rule-list" class="fs-rule-list">
       <div class="fs-empty-state">No rules yet. Create one →</div>
     </div>
+	<div class="fs-sidebar-resizer" id="fs-sidebar-resizer"></div>
   </div>
 
   <!-- RIGHT: Editor -->
@@ -236,45 +329,67 @@ const FormStylerApp = {
 		const btn = document.querySelector(".fs-new-btn-center");
 		if (btn) {
 			btn.textContent = this.rules.length === 0
-				? "＋ Create First Rule"
-				: "＋ Create Rule";
+				? "╋ Create First Rule"
+				: "╋ Create Rule";
 		}
 	},
 
 	renderRuleList(rules) {
-		const list = document.getElementById("fs-rule-list");
-		if (!rules.length) {
-			list.innerHTML = `<div class="fs-empty-state">No rules yet. Create one →</div>`;
-			return;
-		}
-		list.innerHTML = rules
-			.map(
-				(r) => `
-<div class="fs-rule-item ${this.currentRule?.name === r.name ? "active" : ""}"
-     data-name="${r.name}">
+        const list = document.getElementById("fs-rule-list");
+        if (!list) return;
+
+        if (!rules || !rules.length) {
+            list.innerHTML = `<div class="fs-empty-state">No rules yet. Create one →</div>`;
+            return;
+        }
+
+        list.innerHTML = rules
+            .map((r) => {
+                const isActiveClass = this.currentRule?.name === r.name ? "active" : "";
+                const dotStatus = r.is_active ? "active" : "inactive";
+                
+                // Safely build out your metadata string array
+                const metaParts = [];
+                if (r.apply_to) metaParts.push(r.apply_to);
+                if (r.doctype_name) metaParts.push(r.doctype_name);
+                if (r.field_type) metaParts.push(r.field_type);
+                const metaString = metaParts.join(" · ");
+
+                // Escape rule name safely to protect layout engine
+                const safeName = frappe.utils.escape_html(r.rule_name || "");
+
+                return `
+<div class="fs-rule-item ${isActiveClass}" data-name="${r.name}">
   <div class="fs-rule-item-left">
-    <span class="fs-rule-dot ${r.is_active ? "active" : "inactive"}"></span>
+    <span class="fs-rule-dot ${dotStatus}"></span>
     <div>
-      <div class="fs-rule-name">${r.rule_name}</div>
-      <div class="fs-rule-meta">${r.apply_to} ${r.doctype_name ? "· " + r.doctype_name : ""} ${r.field_type ? "· " + r.field_type : ""}</div>
+      <div class="fs-rule-name">${safeName}</div>
+      <div class="fs-rule-meta">${metaString}</div>
     </div>
   </div>
   <div class="fs-rule-badges">
-    ${r.hover_effect ? `<span class="fs-badge hover">${r.hover_effect}</span>` : ""}
-    ${r.field_width || r.field_height ? `<span class="fs-badge dim">⇔</span>` : ""}
-    ${r.label_color || r.field_bg_color ? `<span class="fs-badge color">🎨</span>` : ""}
+    ${r.hover_effect ? `<span class="fs-badge hover" title="Hover Effect">${r.hover_effect}</span>` : ""}
+    ${r.field_width || r.field_height ? `<span class="fs-badge dim" title="Custom Dimensions">⇔</span>` : ""}
+    ${r.label_color || r.field_bg_color ? `<span class="fs-badge color" title="Custom Colors">🎨</span>` : ""}
   </div>
-</div>`,
-			)
-			.join("");
+</div>`;
+            })
+            .join("");
+    },
 
-		list.querySelectorAll(".fs-rule-item").forEach((item) => {
-			item.addEventListener("click", () => {
-				const rule = this.rules.find((r) => r.name === item.dataset.name);
-				if (rule) this.openEditor(rule);
-			});
-		});
-	},
+    setupSidebarListEvents() {
+        const list = document.getElementById("fs-rule-list");
+        if (!list) return;
+
+        list.addEventListener("click", (e) => {
+            const item = e.target.closest(".fs-rule-item");
+            if (!item) return;
+
+            const ruleName = item.dataset.name;
+            const rule = this.rules.find((r) => r.name === ruleName);
+            if (rule) this.openEditor(rule);
+        });
+    },
 
 	filterRules(query) {
 		const q = query.toLowerCase();
@@ -289,9 +404,12 @@ const FormStylerApp = {
 
 	// Editor
 	openEditor(rule) {
+		this._initializing = true; 
 		this.currentRule = rule ? { ...rule } : this.blankRule();
+		this.markClean();
 		this.renderEditor();
-		this.renderRuleList(this.rules); // refresh active state
+		this.renderRuleList(this.rules);
+		
 	},
 
 	blankRule() {
@@ -336,7 +454,6 @@ const FormStylerApp = {
         <input type="checkbox" class="fs-toggle" data-field="is_active" ${r.is_active ? "checked" : ""} />
         Active
       </label>
-      <button class="btn btn-primary btn-sm fs-save-btn">Save Rule</button>
       ${r.name ? `<button class="btn btn-danger btn-sm fs-delete-btn">Delete</button>` : ""}
     </div>
   </div>
@@ -457,11 +574,19 @@ const FormStylerApp = {
 			.then(() => {
 				this.updateDimensions();
 				this.updateCSSPreview();
+				setTimeout(() => { 
+					this._initializing = false;
+					this.markClean();
+				 }, 0);
 			})
 			.catch(err => {
 				console.error("[renderEditor] Error updating criteria:", err);
 				this.updateDimensions();
 				this.updateCSSPreview();
+				setTimeout(() => { 
+					this._initializing = false;
+					this.markClean();
+				 }, 0);
 			});
 	},
 
@@ -474,6 +599,7 @@ const FormStylerApp = {
 			const field = el.dataset.field;
 			const evt = el.type === "checkbox" ? "change" : "input";
 			el.addEventListener(evt, (e) => {
+				this.markDirty();
 				if (el.type === "checkbox") {
 					r[field] = e.target.checked ? 1 : 0;
 				} else {
@@ -503,6 +629,7 @@ const FormStylerApp = {
 		// Clear color buttons
 		editor.querySelectorAll(".fs-clear-color").forEach((btn) => {
 			btn.addEventListener("click", () => {
+				this.markDirty();
 				const field = btn.dataset.field;
 				r[field] = "";
 				const text = editor.querySelector(`.fs-color-text[data-field="${field}"]`);
@@ -514,6 +641,7 @@ const FormStylerApp = {
 		// Hover effect cards
 		editor.querySelectorAll(".fs-hover-card").forEach((card) => {
 			card.addEventListener("click", () => {
+				this.markDirty();
 				editor
 					.querySelectorAll(".fs-hover-card")
 					.forEach((c) => c.classList.remove("selected"));
@@ -525,9 +653,6 @@ const FormStylerApp = {
 				self.updateCSSPreview();
 			});
 		});
-
-		// Save
-		editor.querySelector(".fs-save-btn").addEventListener("click", () => self.saveRule());
 
 		// Delete
 		const deleteBtn = editor.querySelector(".fs-delete-btn");
@@ -695,30 +820,15 @@ const FormStylerApp = {
 
 		let lastDt = r.doctype_name || "";
 
-		this._doctypeCtrl.df.onchange = () => {
-			const newDt = self._doctypeCtrl.get_value() || "";
-			if (newDt === lastDt) return;
-			lastDt = newDt;
-			r.doctype_name = newDt;
-			r.fieldname = "";
-			if (self._targetCtrl) self._targetCtrl.set_value([]);
-			self.updateCSSPreview();
-		};
-
-		this._targetCtrl.df.onchange = () => {
-			self.syncSelectionFromTargetControl();
-			self.updateCSSPreview();
-		};
+		this._doctypeCtrl.df.onchange = null;
+		this._targetCtrl.df.onchange = null;
 
 		if (r.doctype_name) {
-			// Set the internal value and the UI input directly to bypass the network validation call
 			this._doctypeCtrl.value = r.doctype_name;
 			this._doctypeCtrl.set_input_value(r.doctype_name);
 			lastDt = r.doctype_name; 
 		}
 
-		// This happens when the user clicks a rule before prefetchAllMeta resolves.
-		// _metaStore === null means loading, not "loaded but empty" ({}).
 		if (this._metaStore === null) {
 			await this.prefetchAllMeta();
 		}
@@ -727,10 +837,27 @@ const FormStylerApp = {
 			const initial = r.fieldname === "__all__"
 				? ["__all__"]
 				: r.fieldname.split(",").map(s => s.trim()).filter(Boolean);
-
-			// Store is guaranteed populated here — set_value works first try
 			this._targetCtrl.set_value(initial);
 		}
+
+		// Re-attach the handlers AFTER initial values are set
+		this._doctypeCtrl.df.onchange = () => {
+			const newDt = self._doctypeCtrl.get_value() || "";
+			if (newDt === lastDt) return;
+			lastDt = newDt;
+			r.doctype_name = newDt;
+			r.fieldname = "";
+
+			if (self._targetCtrl) self._targetCtrl.set_value([]);
+			this.markDirty();
+			self.updateCSSPreview();
+		};
+
+		this._targetCtrl.df.onchange = () => {
+			self.syncSelectionFromTargetControl();
+			this.markDirty();
+			self.updateCSSPreview();
+		};
 	},
 
 
@@ -799,6 +926,7 @@ const FormStylerApp = {
 			if (hRange) hRange.value = hNum;
 			if (wVal) wVal.textContent = wCss;
 			if (hVal) hVal.textContent = hCss;
+			this.markDirty();
 			self.updateCSSPreview();
 		};
 
@@ -806,20 +934,21 @@ const FormStylerApp = {
 
         if (wRange) {
             wRange.addEventListener("input", (e) => {
-                // Safe fallback if unitSel element doesn't exist in the DOM
+                this.markDirty();
                 const currentUnit = unitSel ? unitSel.value : unit;
                 applySize(Number(e.target.value), Number(hRange.value), currentUnit);
             });
         }
         if (hRange) {
             hRange.addEventListener("input", (e) => {
-                // Safe fallback if unitSel element doesn't exist in the DOM
+                this.markDirty();
                 const currentUnit = unitSel ? unitSel.value : unit;
                 applySize(Number(wRange.value), Number(e.target.value), currentUnit);
             });
         }
         if (unitSel) {
             unitSel.addEventListener("change", (e) => {
+				this.markDirty();
                 applySize(Number(wRange.value), Number(hRange.value), e.target.value);
             });
         }
@@ -885,17 +1014,23 @@ const FormStylerApp = {
 	},
 
 	async saveRule() {
-		const r = this.currentRule;
-		if (!r.rule_name || !r.rule_name.trim()) {
-			frappe.msgprint("Please enter a Rule Name.");
-			return;
-		}
-
+		// ── Single scope sync, before everything ──
 		if (this._scopeControls?.doctype) {
-			r.doctype_name = this._scopeControls.doctype.get_value() || "";
+			this.currentRule.doctype_name = this._scopeControls.doctype.get_value() || "";
 		}
 		if (this._scopeControls?.target) {
 			this.syncSelectionFromTargetControl();
+		}
+
+		if (!this.dirty()) {
+			frappe.show_alert({ message: "No changes to save.", indicator: "gray" });
+			return;
+		}
+
+		const r = this.currentRule;
+
+		if (!r.rule_name || !r.rule_name.trim()) {
+			r.rule_name = `${r.doctype_name || "DocType"}-${Date.now()}`;
 		}
 		if (!r.doctype_name) {
 			frappe.msgprint(__("Please select a DocType."));
@@ -915,12 +1050,17 @@ const FormStylerApp = {
 			if (res.message) {
 				const saved = typeof res.message === "object" ? res.message : { name: res.message };
 				r.name = saved.name || res.message;
-				await this.loadRules();
 
-				// ✅ Re-open editor with fresh rule from server so MultiSelectList re-hydrates correctly
-				const freshRule = this.rules.find((ru) => ru.name === r.name);
-				if (freshRule) this.openEditor(freshRule);
-				else this.renderRuleList(this.rules);
+				const updatedRule = { ...r };
+				const idx = this.rules.findIndex(ru => ru.name === r.name);
+				if (idx >= 0) this.rules[idx] = updatedRule;
+				else this.rules.push(updatedRule);
+
+				this.renderRuleList(this.rules);
+				this.openEditor(updatedRule);
+
+				// ── Delay markClean so Frappe's async set_value onchange fires first ──
+				setTimeout(() => this.markClean(), 0);
 
 				if (window.FormStyler) {
 					const result = await FormStyler.reloadAndInject();
@@ -933,17 +1073,12 @@ const FormStylerApp = {
 						});
 					} else if (cur_frm) {
 						frappe.show_alert({
-							message: __(
-								"Rule saved but 0 fields matched on {0}. Check Apply To / DocType / Field Type, then refresh the form.",
-								[onForm]
-							),
+							message: __("Rule saved but 0 fields matched on {0}. Check Apply To / DocType / Field Type, then refresh the form.", [onForm]),
 							indicator: "orange",
 						});
 					} else {
 						frappe.show_alert({
-							message: __(
-								"Rule saved. Open a DocType form (e.g. Asset) to see styles."
-							),
+							message: __("Rule saved. Open a DocType form (e.g. Asset) to see styles."),
 							indicator: "green",
 						});
 					}
@@ -957,24 +1092,29 @@ const FormStylerApp = {
 	async deleteRule() {
 		const name = this.currentRule.name;
 		if (!name) return;
+
 		const confirmed = await new Promise((res) => {
-			frappe.confirm(
-				"Delete this rule?",
-				() => res(true),
-				() => res(false),
-			);
+			frappe.confirm("Delete this rule?", () => res(true), () => res(false));
 		});
 		if (!confirmed) return;
+
 		await frappe.call({ method: "form_styler.utils.delete_style_rule", args: { name } });
-		frappe.show_alert({ message: "Rule deleted.", indicator: "orange" });
+
+		this.rules = this.rules.filter(ru => ru.name !== name);
 		this.currentRule = null;
+
+		this.renderRuleList(this.rules);
 		document.getElementById("fs-editor").innerHTML = `
-<div class="fs-editor-placeholder">
-  <div class="fs-placeholder-icon">🎨</div>
-  <div class="fs-placeholder-title">Form Styler</div>
-  <div class="fs-placeholder-sub">Select a rule to edit or create a new one</div>
-</div>`;
-		await this.loadRules();
+	<div class="fs-editor-placeholder">
+	<div class="fs-placeholder-icon">🎨</div>
+	<div class="fs-placeholder-title">Form Styler</div>
+	<div class="fs-placeholder-sub">Select a rule to edit or create a new one</div>
+	</div>`;
+
+		frappe.show_alert({ message: "Rule deleted.", indicator: "orange" });
+		this.markDlt();
+		setTimeout(() => this.page.set_indicator("", ""), 3000); 
+
 		if (window.FormStyler) {
 			FormStyler.reloadAndInject();
 			if (cur_frm) FormStyler.applyToForm(cur_frm);
