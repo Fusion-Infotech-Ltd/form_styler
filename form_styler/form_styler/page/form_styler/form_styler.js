@@ -3,7 +3,7 @@
 // Version: 1.0.0
 // Description: Form Styler is a Frappe app that allows you to customize the width, height, background color, hover effects, label color, and text color of fields, Section Breaks, and Column Breaks directly from the UI. It helps you design and personalize form layouts efficiently without writing custom code, giving you more flexibility beyond the default Frappe layout system.
 
-// ── Form Styler Page ──────────────────────────────────────────────────────────
+// ── Form Styler Page: SPA-style UI built with vanilla JS inside Frappe's Page framework.
 // Full SPA-style UI built with vanilla JS inside Frappe's Page framework.
 
 frappe.pages["form-styler"].on_page_load = function (wrapper) {
@@ -21,9 +21,7 @@ frappe.pages["form-styler"].on_page_load = function (wrapper) {
 	FormStylerApp.init(wrapper, page);
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
-// ─────────────────────────────────────────────────────────────────────────────
 const FIELD_TYPES = [
 	"Attach",
 	"Attach Image",
@@ -108,7 +106,7 @@ const FormStylerApp = {
     rules: [],
     currentRule: null,
 
-    // ── NEW: flat in-memory store populated once at startup ──────────────────
+    // ── NEW: flat in-memory store populated once at startup 
     // Shape: { "Sales Invoice": { Field: [...], Section: [...], Column: [...] } }
     _metaStore: null,          // null = not yet loaded, {} = loaded (may be empty)
     _metaLoadPromise: null,    // guards against double-fetch on slow connections
@@ -126,7 +124,7 @@ const FormStylerApp = {
         ]);
     },
 
-    // ── Single bulk fetch, called once ──────────────────────────────────────
+    // Single bulk fetch, called once 
 	async prefetchAllMeta() {
         if (this._metaStore !== null) return;
         if (this._metaLoadPromise) return this._metaLoadPromise;
@@ -161,7 +159,7 @@ const FormStylerApp = {
         return this._metaLoadPromise;
     },
 
-    // ── Synchronous lookup — no network, no await, no race ──────────────────
+    // Synchronous lookup — no network, no await, no race 
     getFieldsFor(doctype, targetElement) {
         if (!doctype || !this._metaStore) return [];
         const bucket = targetElement === "Section" ? "Section"
@@ -289,7 +287,7 @@ const FormStylerApp = {
 		this.renderRuleList(filtered);
 	},
 
-	// ── Editor ────────────────────────────────────────────────────────────────
+	// Editor
 	openEditor(rule) {
 		this.currentRule = rule ? { ...rule } : this.blankRule();
 		this.renderEditor();
@@ -650,7 +648,7 @@ const FormStylerApp = {
         return options;   // plain array — MultiSelectList accepts sync return
     },
 
-    // ── Spinner helper becomes a no-op (kept so no call-sites break) ─────────
+    // Spinner helper becomes a no-op (kept so no call-sites break)
 	async setupScopeControls(area) {
 		const self = this;
 		const r = this.currentRule;
@@ -661,7 +659,7 @@ const FormStylerApp = {
 		const tgtMount = area.querySelector("#fs-target-mount");
 		if (!dtMount || !tgtMount) return;
 
-        // ── DocType control ──────────────────────────────────────────────────
+        // ── DocType control
         this._doctypeCtrl = frappe.ui.form.make_control({
             parent: dtMount,
             df: {
@@ -679,7 +677,7 @@ const FormStylerApp = {
         this._doctypeCtrl.$wrapper.css({ maxWidth: "300px", minWidth: "100px" });
         this._scopeControls.doctype = this._doctypeCtrl;
 
-        // ── Target (field/section/column) control ────────────────────────────
+        // Target (field/section/column) control
         this._targetCtrl = frappe.ui.form.make_control({
             parent: tgtMount,
             df: {
@@ -713,16 +711,17 @@ const FormStylerApp = {
 		};
 
 		if (r.doctype_name) {
-			this._doctypeCtrl.set_value(r.doctype_name);
+			// Set the internal value and the UI input directly to bypass the network validation call
+			this._doctypeCtrl.value = r.doctype_name;
+			this._doctypeCtrl.set_input_value(r.doctype_name);
+			lastDt = r.doctype_name; 
 		}
 
-		// ── KEY FIX: if bulk fetch is still in-flight, wait for it now ──────────
 		// This happens when the user clicks a rule before prefetchAllMeta resolves.
 		// _metaStore === null means loading, not "loaded but empty" ({}).
 		if (this._metaStore === null) {
 			await this.prefetchAllMeta();
 		}
-		// ────────────────────────────────────────────────────────────────────────
 
 		if (r.fieldname) {
 			const initial = r.fieldname === "__all__"
@@ -755,8 +754,7 @@ const FormStylerApp = {
 	</div>
 	</div>`;
 
-			// No longer needs await — setupScopeControls is now nearly sync
-			await this.setupScopeControls(area);
+			await this.setupScopeControls(area); // async because of potential prefetch wait, but doesn't actually await anything if data is ready
 		},
 
 	bindResizePanel(host) {
@@ -882,7 +880,6 @@ const FormStylerApp = {
 		el.textContent = css && css.trim() ? css : "— fill in fields above to see CSS —";
 	},
 
-	// ── Persistence ───────────────────────────────────────────────────────────
 	async saveRule() {
 		const r = this.currentRule;
 		if (!r.rule_name || !r.rule_name.trim()) {
