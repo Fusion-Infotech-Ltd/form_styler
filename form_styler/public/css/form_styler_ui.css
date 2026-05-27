@@ -579,3 +579,39 @@
 .fs-resize-unit {
     margin-top: 12px;
 }
+
+.fs-resize-panel {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 16px;
+    width: 100%;
+}
+
+.fs-resize-stage {
+    flex: 1;          /* Take up remaining space smoothly */
+    min-width: 0;    
+    overflow: auto;   
+    background: #f5f5f5; 
+    border-radius: 8px;
+    padding: 20px;
+    position: relative;
+}
+
+.fs-resize-sliders {
+    flex: 0 0 300px;  
+    max-width: 300px;
+    min-width: 100px;
+    width: 100%;
+}
+
+/* 4. Responsive tweak for small mobile viewports */
+@media (max-width: 600px) {
+    .fs-resize-panel {
+        flex-direction: column;
+    }
+    .fs-resize-sliders {
+        flex: 1 1 auto;
+        max-width: 100%;
+    }
+}
