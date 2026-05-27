@@ -804,21 +804,25 @@ const FormStylerApp = {
 
 		applySize(wParsed.num, hParsed.num, unit);
 
-		if (wRange) {
-			wRange.addEventListener("input", (e) => {
-				applySize(Number(e.target.value), Number(hRange.value), unitSel.value);
-			});
-		}
-		if (hRange) {
-			hRange.addEventListener("input", (e) => {
-				applySize(Number(wRange.value), Number(e.target.value), unitSel.value);
-			});
-		}
-		if (unitSel) {
-			unitSel.addEventListener("change", (e) => {
-				applySize(Number(wRange.value), Number(hRange.value), e.target.value);
-			});
-		}
+        if (wRange) {
+            wRange.addEventListener("input", (e) => {
+                // Safe fallback if unitSel element doesn't exist in the DOM
+                const currentUnit = unitSel ? unitSel.value : unit;
+                applySize(Number(e.target.value), Number(hRange.value), currentUnit);
+            });
+        }
+        if (hRange) {
+            hRange.addEventListener("input", (e) => {
+                // Safe fallback if unitSel element doesn't exist in the DOM
+                const currentUnit = unitSel ? unitSel.value : unit;
+                applySize(Number(wRange.value), Number(e.target.value), currentUnit);
+            });
+        }
+        if (unitSel) {
+            unitSel.addEventListener("change", (e) => {
+                applySize(Number(wRange.value), Number(hRange.value), e.target.value);
+            });
+        }
 
 		if (handle) {
 			let startX, startY, startW, startH;
@@ -860,7 +864,7 @@ const FormStylerApp = {
       <div class="fs-resize-handle" title="Drag to resize"></div>
     </div>
   </div>
-  <div class="fs-resize-sliders">
+  <div class="fs-resize-sliders" style="max-width:300px; min-width:100px">
     <label>Width</label>
     <input type="range" class="fs-resize-w" min="40" max="${keys.wMax}" value="200" />
     <div class="fs-resize-value fs-resize-w-val">200px</div>
