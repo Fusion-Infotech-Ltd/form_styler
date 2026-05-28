@@ -322,20 +322,6 @@
 		return styled;
 	}
 
-	function debugNoMatches(frm, rules) {
-		const fields = iterFormFields(frm);
-		console.warn("FormStyler: rules loaded but no fields styled", {
-			rules: rules,
-			form: frm.doctype,
-			fieldCount: fields.length,
-			sample: fields.slice(0, 12).map((f) => ({
-				fieldname: f.df.fieldname,
-				fieldtype: f.df.fieldtype,
-				hasWrapper: hasFieldWrapper(f),
-			})),
-		});
-	}
-
 	// ── CSS for column/section + hover (secondary) ─────────────────────────────
 
 	function escapeCSSAttr(str) {
@@ -443,10 +429,6 @@
 			const layoutStyled = applyDirectLayoutStyles(frm, rules);
 			const styled = fieldStyled + layoutStyled;
 			injectLayoutCSS(rules);
-
-			if (styled === 0 && rules.length > 0 && (attempt || 1) >= 3) {
-				debugNoMatches(frm, rules);
-			}
 
 			if (styled === 0 && rules.length > 0 && (attempt || 1) < 4) {
 				setTimeout(function () {
