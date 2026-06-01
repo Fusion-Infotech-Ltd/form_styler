@@ -467,7 +467,7 @@ const FormStylerApp = {
         <div class="fs-field-group">
           <label>Target Element</label>
           <select class="form-control form-control-sm" data-field="target_element" style="max-width:300px !important; min-width:100px !important;">
-            ${["Field", "Column", "Section"]
+            ${["Field", "Column"]
 				.map((o) => `<option ${r.target_element === o ? "selected" : ""}>${o}</option>`)
 				.join("")}
           </select>
@@ -903,8 +903,8 @@ const FormStylerApp = {
 			boxLabel.textContent = `${keys.label} preview — drag corner`;
 		}
 
-		const wParsed = this.parseCssPx(r[keys.w], { num: 200, unit: "px" });
-		const hParsed = this.parseCssPx(r[keys.h], { num: 40, unit: "px" });
+	const wParsed = this.parseCssPx(r[keys.w], target === "Column" ? { num: 450, unit: "px" } : { num: 300, unit: "px" });
+	const hParsed = this.parseCssPx(r[keys.h], target === "Column" ? { num: 220, unit: "px" } : { num: 28, unit: "px" });
 		const unit = wParsed.unit === "%" ? "%" : "px";
 		if (unitSel) unitSel.value = unit;
 
@@ -957,7 +957,7 @@ const FormStylerApp = {
 			let startX, startY, startW, startH;
 			const onMove = (ev) => {
 				const nw = Math.max(40, startW + (ev.clientX - startX));
-				const nh = Math.max(24, startH + (ev.clientY - startY));
+				const nh = Math.max(28, startH + (ev.clientY - startY));
 				applySize(nw, nh, "px");
 				if (unitSel) unitSel.value = "px";
 			};
@@ -995,11 +995,11 @@ const FormStylerApp = {
   </div>
   <div class="fs-resize-sliders" style="max-width:300px; min-width:100px">
     <label>Width</label>
-    <input type="range" class="fs-resize-w" min="40" max="${keys.wMax}" value="200" />
-    <div class="fs-resize-value fs-resize-w-val">200px</div>
+    <input type="range" class="fs-resize-w" min="40" max="${keys.wMax}" value="300" />
+    <div class="fs-resize-value fs-resize-w-val">300px</div>
     <label>Height</label>
-    <input type="range" class="fs-resize-h" min="24" max="${keys.hMax}" value="40" />
-    <div class="fs-resize-value fs-resize-h-val">40px</div>
+    <input type="range" class="fs-resize-h" min="28" max="${keys.hMax}" value="28" />
+    <div class="fs-resize-value fs-resize-h-val">28px</div>
   </div>
 </div>`;
 

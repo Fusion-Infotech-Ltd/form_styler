@@ -243,7 +243,7 @@ def toggle_rule(name, is_active):
 @frappe.whitelist()
 def get_all_doctype_fields_bulk():
     def generate_meta_payload():
-        LAYOUT_EXCLUDE = {"Tab Break"}
+        LAYOUT_EXCLUDE = {"Tab Break", "Section Break"}
         
         doctypes = frappe.get_all(
             "DocType",
@@ -263,14 +263,12 @@ def get_all_doctype_fields_bulk():
             except Exception:
                 continue
 
-            buckets = {"Field": [], "Section": [], "Column": []}
+            buckets = {"Field": [], "Column": []}
             for f in meta.fields:
                 # OPTIMIZATION: Send a tuple (Array) instead of a Dictionary
                 item = (f.fieldname, f.label or f.fieldname, f.fieldtype)
 
-                if f.fieldtype == "Section Break":
-                    buckets["Section"].append(item)
-                elif f.fieldtype == "Column Break":
+                if f.fieldtype == "Column Break":
                     buckets["Column"].append(item)
                 elif f.fieldtype not in LAYOUT_EXCLUDE:
                     buckets["Field"].append(item)

@@ -362,7 +362,6 @@
   transform: translateY(-1px);
 }
 .fs-styled-layout[data-fs-hover="Glow"]:hover {
-  outline: 2px solid var(--primary);
   box-shadow: 0 0 0 4px rgba(100,130,255,0.2) !important;
 }
 `;

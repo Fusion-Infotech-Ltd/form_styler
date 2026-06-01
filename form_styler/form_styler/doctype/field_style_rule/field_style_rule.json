@@ -77,7 +77,7 @@
    "fieldname": "target_element",
    "fieldtype": "Select",
    "label": "Target Element",
-   "options": "\nField\nColumn\nSection"
+   "options": "\nField\nColumn"
   },
   {
    "fieldname": "section_basic",
@@ -214,7 +214,7 @@
   }
  ],
  "links": [],
- "modified": "2026-05-28 02:08:31.873904",
+ "modified": "2026-06-01 20:34:24.030691",
  "modified_by": "Administrator",
  "module": "Form Styler",
  "name": "Field Style Rule",
