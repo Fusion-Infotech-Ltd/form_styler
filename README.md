@@ -2,7 +2,7 @@
 
 Frappe Version 16
 
-This Frappe app allows you to customize the width, height, background color, hover effects, label color, and text color of fields, Section Breaks, and Column Breaks directly from the UI. It helps you design and personalize form layouts efficiently without writing custom code, giving you more flexibility beyond the default Frappe layout system. 
+This Frappe app allows you to customize the width, height, background color, hover effects, label color, and text color of fields and Column Breaks directly from the UI. It helps you design and personalize form layouts efficiently without writing custom code, giving you more flexibility beyond the default Frappe layout system. 
 
 ## One-time setup (required)
 
