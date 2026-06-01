@@ -40,7 +40,7 @@ Confirm the app is loaded: open browser DevTools → Network → filter `form_st
 | Rule Name | `Asset wide fields` |
 | Active | ✓ checked |
 | Apply To | **All Fields in DocType** |
-| Target Element | `Field` · `Column` · `Section` — switch to resize column-break or section containers |
+| Target Element | `Field` · `Column` — switch to resize column-break containers |
 | DocType | `Asset` |
 | Field Width | `400px` |
 
