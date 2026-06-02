@@ -194,10 +194,15 @@
 		$w.css({ maxWidth: "" });
 		const $inputWrap = field.$input_wrapper || $w.find(".control-input-wrapper").first();
 		$inputWrap.css({ width: "", maxWidth: "", minWidth: "", flex: "" });
-		$w.find(".form-control, .like-disabled-input, .control-value, .control-label").attr(
-			"style",
-			""
-		);
+		$w.find(".form-control, .like-disabled-input, .control-value, .control-label").css({
+            "width": "",
+            "max-width": "",
+            "box-sizing": "",
+            "height": "",
+            "min-height": "",
+            "color": "",
+            "background-color": ""
+        });
 	}
 
 	function applyDirectFieldStyles(frm, rules) {
