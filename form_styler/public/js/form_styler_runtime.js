@@ -235,7 +235,6 @@
 	function ruleMatchesLayout(rule, frm, layoutType, breakFieldname) {
 		if (!breakFieldname) return false;
 		const target = rule.target_element || "Field";
-		if (layoutType === "section" && target !== "Section") return false;
 		if (layoutType === "column" && target !== "Column") return false;
 		return ruleMatchesSelected(rule, frm, breakFieldname);
 	}
@@ -244,10 +243,7 @@
 		const out = {};
 		for (const rule of sortedRules(rules)) {
 			if (!ruleMatchesLayout(rule, frm, layoutType, breakFieldname)) continue;
-			if (layoutType === "section") {
-				if (rule.section_width) out.width = rule.section_width;
-				if (rule.section_height) out.height = rule.section_height;
-			} else {
+			if (layoutType === "column") {
 				if (rule.column_width) out.width = rule.column_width;
 				if (rule.column_height) out.height = rule.column_height;
 			}
@@ -304,15 +300,6 @@
 		if (!$root || !$root.length) return 0;
 
 		let styled = 0;
-		$root.find(".form-section[data-fieldname]").each(function () {
-			const $el = $(this);
-			const fn = $el.attr("data-fieldname");
-			clearLayoutStyles($el);
-			const styles = mergeLayoutStyles(rules, frm, "section", fn);
-			if (!Object.keys(styles).length) return;
-			applyStylesToLayoutElement($el, styles);
-			styled++;
-		});
 
 		$root.find(".form-column[data-fieldname]").each(function () {
 			const $el = $(this);

@@ -169,8 +169,6 @@ def _rule_row(doc):
         "field_height": doc.field_height,
         "column_width": doc.column_width,
         "column_height": doc.column_height,
-        "section_width": doc.section_width,
-        "section_height": doc.section_height,
         "label_color": doc.label_color,
         "field_text_color": doc.field_text_color,
         "field_bg_color": doc.field_bg_color,

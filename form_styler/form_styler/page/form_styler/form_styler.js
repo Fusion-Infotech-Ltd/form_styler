@@ -106,7 +106,6 @@ const LAYOUT_FIELDTYPES = new Set(["Section Break", "Column Break", "Tab Break"]
 const DIM_KEYS = {
 	Field: { w: "field_width", h: "field_height", label: "Field", wMax: 600, hMax: 200 },
 	Column: { w: "column_width", h: "column_height", label: "Column", wMax: 900, hMax: 600 },
-	Section: { w: "section_width", h: "section_height", label: "Section", wMax: 1200, hMax: 800 },
 };
 
 // MAIN APP OBJECT
@@ -344,6 +343,8 @@ const FormStylerApp = {
         }
 
         list.innerHTML = rules
+			.slice()
+			.reverse()
             .map((r) => {
                 const isActiveClass = this.currentRule?.name === r.name ? "active" : "";
                 const dotStatus = r.is_active ? "active" : "inactive";
@@ -423,12 +424,11 @@ const FormStylerApp = {
 			doctype_name: "",
 			fieldname: "",
 			field_type: "Data",
+			enable_resize: 0,
 			field_width: "",
 			field_height: "",
 			column_width: "",
 			column_height: "",
-			section_width: "",
-			section_height: "",
 			label_color: "",
 			field_text_color: "",
 			field_bg_color: "",
@@ -477,10 +477,20 @@ const FormStylerApp = {
     </div>
 
     <!-- SECTION: Dimensions -->
-    <div class="fs-section" id="fs-dim-section">
-      <div class="fs-section-title">2 · Dimensions <span style="font-weight:400;color:var(--text-muted)">— drag corner or use sliders</span></div>
-      <div id="fs-resize-host"></div>
-    </div>
+	<div class="fs-section" id="fs-dim-section">
+	<div class="fs-section-title" style="display:flex;align-items:center;gap:12px;">
+		2 · Dimensions
+		<label class="fs-toggle-label" style="font-size:12px;font-weight:400;">
+		<input type="checkbox" class="fs-toggle" data-field="enable_resize"
+				${r.enable_resize ? "checked" : ""} />
+		Enable Resize
+		</label>
+		<span id="fs-dim-hint" style="font-weight:400;color:var(--text-muted);font-size:12px;">
+		${r.enable_resize ? "— drag corner or use sliders" : "— disabled, dimensions won't be applied"}
+		</span>
+	</div>
+	<div id="fs-resize-host" style="${r.enable_resize ? "" : "display:none"}"></div>
+	</div>
 
     <!-- SECTION: Colors -->
     <div class="fs-section">
@@ -653,6 +663,36 @@ const FormStylerApp = {
 				self.updateCSSPreview();
 			});
 		});
+
+		// ── Enable Resize toggle: show/hide resize panel ──
+		const resizeToggle = editor.querySelector('[data-field="enable_resize"]');
+		if (resizeToggle) {
+			resizeToggle.addEventListener("change", (e) => {
+				const enabled = e.target.checked;
+				r.enable_resize = enabled ? 1 : 0;
+
+				const host = document.getElementById("fs-resize-host");
+				const hint = document.getElementById("fs-dim-hint");
+
+				if (host) host.style.display = enabled ? "" : "none";
+				if (hint) hint.textContent = enabled
+					? "— drag corner or use sliders"
+					: "— disabled, dimensions won't be applied";
+
+				// When disabling, clear dimension values so they don't pollute CSS
+				if (!enabled) {
+					const keys = DIM_KEYS[r.target_element || "Field"] || DIM_KEYS.Field;
+					r[keys.w] = "";
+					r[keys.h] = "";
+				} else {
+					// Re-render the resize panel with defaults
+					self.updateDimensions();
+				}
+
+				self.markDirty();
+				self.updateCSSPreview();
+			});
+		}
 
 		// Delete
 		const deleteBtn = editor.querySelector(".fs-delete-btn");
@@ -981,6 +1021,15 @@ const FormStylerApp = {
 		const r = this.currentRule;
 		const host = document.getElementById("fs-resize-host");
 		if (!host) return;
+
+				// ── Hide panel if resize is disabled ──
+		if (!r.enable_resize) {
+			host.style.display = "none";
+			host.innerHTML = "";
+			return;
+		}
+
+		host.style.display = "";   // ensure visible when enabled
 
 		const target = r.target_element || "Field";
 		const keys = DIM_KEYS[target] || DIM_KEYS.Field;

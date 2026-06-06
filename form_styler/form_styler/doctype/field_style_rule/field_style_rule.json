@@ -16,12 +16,10 @@
   "doctype_name",
   "fieldname",
   "field_type",
+  "enable_resize",
   "section_dimensions",
   "field_width",
   "field_height",
-  "section_section_dims",
-  "section_width",
-  "section_height",
   "column_dimensions_section",
   "column_width",
   "column_height",
@@ -145,26 +143,6 @@
    "label": "Column Height"
   },
   {
-   "depends_on": "eval:doc.target_element == 'Section'",
-   "fieldname": "section_section_dims",
-   "fieldtype": "Section Break",
-   "label": "Section Dimensions"
-  },
-  {
-   "depends_on": "eval:doc.target_element == 'Section'",
-   "description": "CSS value e.g. 200px, 50%, 20rem",
-   "fieldname": "section_width",
-   "fieldtype": "Data",
-   "label": "Section Width",
-   "show_description_on_click": 1
-  },
-  {
-   "depends_on": "eval:doc.target_element == 'Section'",
-   "fieldname": "section_height",
-   "fieldtype": "Data",
-   "label": "Section Height"
-  },
-  {
    "fieldname": "section_colors",
    "fieldtype": "Section Break",
    "label": "Colors"
@@ -211,10 +189,16 @@
    "fieldname": "column_dimensions_section",
    "fieldtype": "Section Break",
    "label": "Column Dimensions"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_resize",
+   "fieldtype": "Check",
+   "label": "Enable Resize"
   }
  ],
  "links": [],
- "modified": "2026-06-01 20:34:24.030691",
+ "modified": "2026-06-06 16:06:09.546075",
  "modified_by": "Administrator",
  "module": "Form Styler",
  "name": "Field Style Rule",
