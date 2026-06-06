@@ -106,7 +106,6 @@ const LAYOUT_FIELDTYPES = new Set(["Section Break", "Column Break", "Tab Break"]
 const DIM_KEYS = {
 	Field: { w: "field_width", h: "field_height", label: "Field", wMax: 600, hMax: 200 },
 	Column: { w: "column_width", h: "column_height", label: "Column", wMax: 900, hMax: 600 },
-	Section: { w: "section_width", h: "section_height", label: "Section", wMax: 1200, hMax: 800 },
 };
 
 // MAIN APP OBJECT
@@ -344,6 +343,8 @@ const FormStylerApp = {
         }
 
         list.innerHTML = rules
+			.slice()
+			.reverse()
             .map((r) => {
                 const isActiveClass = this.currentRule?.name === r.name ? "active" : "";
                 const dotStatus = r.is_active ? "active" : "inactive";
@@ -427,8 +428,6 @@ const FormStylerApp = {
 			field_height: "",
 			column_width: "",
 			column_height: "",
-			section_width: "",
-			section_height: "",
 			label_color: "",
 			field_text_color: "",
 			field_bg_color: "",
